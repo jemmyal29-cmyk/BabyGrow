@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "BabyGrow",
+    "slug": "babygrow-mobile",
+    "version": "2.0.0-unicorn",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/images/logo-babygrow.png",
+    "splash": {
+      "image": "./assets/images/logo-babygrow.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFC1CC"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.babygrow.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "BabyGrow needs Bluetooth to connect to IoT measurement devices",
+        "NSBluetoothPeripheralUsageDescription": "BabyGrow needs Bluetooth to pair with BabyGrow_Alat device"
+      }
+    },
+    "android": {
+      "icon": "./assets/images/logo-babygrow.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo-babygrow.png",
+        "backgroundColor": "#FFC1CC"
+      },
+      "package": "com.babygrow.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "NOTIFICATIONS",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/images/logo-babygrow.png"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24
+          }
+        }
+      ],
+      "expo-dev-client",
+      "react-native-ble-plx"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2d8faa75-9653-4d8a-822a-a2f4efadc235"
+      }
+    }
+  }
+}
