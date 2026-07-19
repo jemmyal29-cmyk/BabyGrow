@@ -5,7 +5,6 @@ BabyGrow adalah aplikasi mobile Android berbasis React Native yang membantu pema
 ## Ringkasan
 
 - Platform: `mobile-app/` (React Native / Expo)
-- Dokumentasi lengkap: `docs/`
 - Tujuan: pantau tinggi/berat balita, deteksi risiko stunting, dan berikan rekomendasi nutrisi
 - Status: struktur repo telah dibersihkan, dependensi runtime diabaikan oleh `.gitignore`
 
@@ -21,7 +20,6 @@ BabyGrow adalah aplikasi mobile Android berbasis React Native yang membantu pema
 ## Struktur Repository
 
 - `mobile-app/` - sumber aplikasi mobile React Native
-- `docs/` - dokumentasi arsitektur, alur pengguna, UI, dan integrasi IoT
 - `README.md` - ringkasan proyek dan panduan cepat
 
 ## Persiapan & Jalankan
@@ -40,16 +38,6 @@ BabyGrow adalah aplikasi mobile Android berbasis React Native yang membantu pema
    ```
 
 > Jika menggunakan Expo, gunakan `npx expo start` dan ikuti panduan pada terminal.
-
-## Dokumentasi
-
-Lihat dokumen berikut untuk detail teknis:
-
-- `docs/01-ARCHITECTURE.md`
-- `docs/02-TECH-STACK-DETAIL.md`
-- `docs/03-USER-FLOW.md`
-- `docs/04-UI-MOCKUPS.md`
-- `docs/05-IOT-INTEGRATION.md`
 
 ## Catatan Repository
 

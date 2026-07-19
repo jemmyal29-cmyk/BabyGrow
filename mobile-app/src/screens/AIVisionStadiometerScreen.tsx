@@ -16,10 +16,12 @@ import { CameraView, Camera } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Line, Circle, Rect } from 'react-native-svg';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { UnderConstructionModal } from '../components/common';
 
 const { width, height } = Dimensions.get('window');
 
 export default function AIVisionStadiometerScreen({ navigation }: any) {
+  const [showUnderConstruction, setShowUnderConstruction] = useState(true);
   const [permission, setPermission] = React.useState<any>(null);
   const [requesting, setRequesting] = React.useState(false);
 
@@ -106,6 +108,11 @@ export default function AIVisionStadiometerScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      <UnderConstructionModal
+        visible={showUnderConstruction}
+        onClose={() => setShowUnderConstruction(false)}
+        featureName="AI Vision Stadiometer"
+      />
       <CameraView
         ref={cameraRef}
         style={styles.camera}

@@ -1,35 +1,61 @@
 /**
- * 📡 MQTT Service - IoT Integration
- * ESP32 VL53L0X Height Sensor + MQTT Broker
- * Zero-Input UX: Live sensor data auto-fills measurement inputs
+ * MQTT Service — Singleton (Paho MQTT over WebSockets)
+ * Broker default: EMQX public WSS
  */
 
-import { MQTTMeasurement, MQTTConnectionStatus, ESP32Config } from '../types';
+import { Client, Message } from 'paho-mqtt';
+import type { MQTTMeasurement, MQTTConnectionStatus } from '../types';
 
-type EventType = 'connected' | 'disconnected' | 'measurement' | 'error' | 'reconnecting' | 'offline';
-type EventListener = (data?: any) => void;
+type EventType =
+  | 'connected'
+  | 'disconnected'
+  | 'measurement'
+  | 'error'
+  | 'reconnecting'
+  | 'offline';
+
+type EventListener = (data?: unknown) => void;
+
+const DEFAULT_WS_URL =
+  process.env.EXPO_PUBLIC_MQTT_WS_URL || 'wss://broker.emqx.io:8084/mqtt';
+const DEFAULT_TOPIC =
+  process.env.EXPO_PUBLIC_MQTT_TOPIC || 'babygrow/data/sensor';
+
+function parseWsUrl(wsUrl: string): { host: string; port: number; path: string; useSSL: boolean } {
+  try {
+    const url = new URL(wsUrl);
+    const useSSL = url.protocol === 'wss:';
+    const port = url.port
+      ? Number(url.port)
+      : useSSL
+        ? 443
+        : 80;
+    return {
+      host: url.hostname,
+      port,
+      path: url.pathname || '/mqtt',
+      useSSL,
+    };
+  } catch {
+    return { host: 'broker.emqx.io', port: 8084, path: '/mqtt', useSSL: true };
+  }
+}
 
 class MQTTService {
   private static instance: MQTTService;
-  private client: any = null;
-  private connected: boolean = false;
-  private brokerUrl: string = 'mqtt://broker.emqx.io:1883'; // EMQX Public Broker
-  private subscriptions: Set<string> = new Set();
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 5;
+  private client: Client | null = null;
+  private connected = false;
+  private brokerUrl = DEFAULT_WS_URL;
+  private topic = DEFAULT_TOPIC;
+  private subscriptions = new Set<string>();
   private latestMeasurement: MQTTMeasurement | null = null;
-
-  // Event listener system (Native React Native pattern)
-  private eventListeners: Map<EventType, Set<EventListener>> = new Map();
+  private eventListeners = new Map<EventType, Set<EventListener>>();
+  private connecting = false;
 
   private constructor() {
-    // Initialize event listener maps
-    this.eventListeners.set('connected', new Set());
-    this.eventListeners.set('disconnected', new Set());
-    this.eventListeners.set('measurement', new Set());
-    this.eventListeners.set('error', new Set());
-    this.eventListeners.set('reconnecting', new Set());
-    this.eventListeners.set('offline', new Set());
+    (['connected', 'disconnected', 'measurement', 'error', 'reconnecting', 'offline'] as EventType[]).forEach(
+      (e) => this.eventListeners.set(e, new Set())
+    );
   }
 
   static getInstance(): MQTTService {
@@ -39,285 +65,196 @@ class MQTTService {
     return MQTTService.instance;
   }
 
-
-  /**
-   * Subscribe to measurement updates (for UI components)
-   */
   subscribeMeasurements(callback: (data: MQTTMeasurement) => void): () => void {
-    this.on('measurement', callback);
-    
-    // Return unsubscribe function
-    return () => {
-      this.off('measurement', callback);
-    };
+    this.on('measurement', callback as EventListener);
+    return () => this.off('measurement', callback as EventListener);
   }
 
-  /**
-   * Add event listener (React Native compatible)
-   */
   on(event: EventType, listener: EventListener): void {
-    const listeners = this.eventListeners.get(event);
-    if (listeners) {
-      listeners.add(listener);
-    }
+    this.eventListeners.get(event)?.add(listener);
   }
 
-  /**
-   * Remove event listener
-   */
   off(event: EventType, listener: EventListener): void {
-    const listeners = this.eventListeners.get(event);
-    if (listeners) {
-      listeners.delete(listener);
-    }
+    this.eventListeners.get(event)?.delete(listener);
   }
 
-  /**
-   * Emit event (internal)
-   */
-  private emit(event: EventType, data?: any): void {
-    const listeners = this.eventListeners.get(event);
-    if (listeners) {
-      listeners.forEach(listener => listener(data));
-    }
+  private emit(event: EventType, data?: unknown): void {
+    this.eventListeners.get(event)?.forEach((listener) => listener(data));
   }
 
-  /**
-   * 🚀 Manual Mock Measurement Trigger (Only on user request)
-   * Called ONLY when "Ukur Otomatis" button is pressed AND device is paired
-   */
-  public triggerMockMeasurement(): void {
-    if (!this.connected) {
-      console.warn('⚠️ Device not connected. Cannot trigger measurement.');
-      return;
-    }
-
-    // Generate ONE measurement per trigger
-    const baseHeight = 78.5;
-    const heightVariation = (Math.random() * 4) - 2;
-    const height = baseHeight + heightVariation;
-    const weight = 9.5 + (Math.random() * 1.5);
-
-    const mockData: MQTTMeasurement = {
-      weight_kg: parseFloat(weight.toFixed(1)),
-      height_cm: parseFloat(height.toFixed(1)),
-      timestamp: new Date().toISOString(),
-      deviceId: 'ESP32_MOCK_VL53L0X',
-      quality: this.assessQuality(height),
-      batteryLevel: 85 + Math.floor(Math.random() * 10),
-      signalStrength: -45 + Math.floor(Math.random() * 20),
-      temperature: 24 + Math.random() * 3,
-    };
-
-    this.latestMeasurement = mockData;
-    this.emit('measurement', mockData);
-    console.log('📡 Manual Measurement Triggered:', mockData.height_cm, 'cm |', mockData.weight_kg, 'kg');
-  }
-
-  /**
-   * Assess measurement quality based on value
-   */
-  private assessQuality(height: number): 'excellent' | 'good' | 'fair' | 'poor' {
-    // WHO standard range untuk balita 0-5 tahun: ~50-120 cm
+  private assessQuality(height: number): MQTTMeasurement['quality'] {
     if (height >= 50 && height <= 120) return 'excellent';
     if (height >= 40 && height <= 130) return 'good';
     if (height >= 30 && height <= 140) return 'fair';
     return 'poor';
   }
 
-  /**
-   * Get latest measurement (for auto-fill)
-   */
-  getLatestMeasurement(): MQTTMeasurement | null {
-    return this.latestMeasurement;
+  private normalizePayload(raw: Record<string, unknown>): MQTTMeasurement | null {
+    const height = Number(raw.tinggi ?? raw.height_cm ?? raw.height ?? 0);
+    const weight = Number(raw.berat ?? raw.weight_kg ?? raw.weight ?? 0);
+    if (!height || Number.isNaN(height)) return null;
+
+    return {
+      weight_kg: Number.isNaN(weight) ? 0 : weight,
+      height_cm: height,
+      timestamp: new Date().toISOString(),
+      deviceId: String(raw.deviceId ?? raw.device_id ?? 'ESP32_VL53L0X'),
+      quality: this.assessQuality(height),
+      batteryLevel: raw.battery != null ? Number(raw.battery) : undefined,
+      signalStrength: raw.rssi != null ? Number(raw.rssi) : undefined,
+      temperature: raw.temp != null ? Number(raw.temp) : undefined,
+    };
   }
 
+  private handleMessage(message: Message): void {
+    try {
+      const payload = message.payloadString;
+      const data = JSON.parse(payload) as Record<string, unknown>;
+      const measurement = this.normalizePayload(data);
+      if (!measurement) return;
 
-  /**
-   * 🔌 Connect to MQTT Broker (EMQX)
-   */
-  async connect(
-    brokerUrl?: string,
-    clientId?: string,
-    username?: string,
-    password?: string
-  ): Promise<void> {
-    // Unique Client ID untuk mencegah konflik
-    const uniqueClientId = clientId || `babygrow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    console.log('🔌 Connecting to MQTT Broker:', this.brokerUrl);
-    console.log('📱 Client ID:', uniqueClientId);
-
-    this.brokerUrl = brokerUrl || this.brokerUrl;
-    
-    // ⚡ SIMULASI KONEKSI UNTUK DEMO
-    // (Production: uncomment kode MQTT client di bawah)
-    setTimeout(() => {
-      this.connected = true;
-      console.log('✅ MQTT Connected (Simulated)');
-      this.emit('connected', { 
-        broker: this.brokerUrl,
-        clientId: uniqueClientId,
-        timestamp: new Date().toISOString()
-      });
-
-      // Auto-subscribe ke topic sensor
-      this.subscribe('babygrow/data/sensor');
-    }, 1000);
-
-    /*
-    // 🔴 PRODUCTION CODE - Uncomment saat ESP32 sudah siap
-    const mqtt = require('mqtt/dist/mqtt'); // MQTT.js for React Native
-    
-    const options = {
-      clientId: uniqueClientId,
-      username: username || '',
-      password: password || '',
-      clean: true,
-      reconnectPeriod: 5000,
-      connectTimeout: 30000,
-      keepalive: 60,
-    };
-
-    this.client = mqtt.connect(this.brokerUrl, options);
-
-    this.client.on('connect', () => {
-      console.log('✅ MQTT Connected to:', this.brokerUrl);
-      this.connected = true;
-      this.reconnectAttempts = 0;
-      this.emit('connected', { broker: this.brokerUrl, clientId: uniqueClientId });
-      
-      // Auto subscribe ke topic sensor
-      this.subscribe('babygrow/data/sensor');
-    });
-
-    this.client.on('error', (error: Error) => {
-      console.error('❌ MQTT Error:', error);
-      this.connected = false;
+      this.latestMeasurement = measurement;
+      this.emit('measurement', measurement);
+      console.log('[MQTT] measurement', measurement.height_cm, 'cm');
+    } catch (error) {
+      console.error('[MQTT] parse error', error);
       this.emit('error', error);
-    });
+    }
+  }
 
-    this.client.on('offline', () => {
-      console.log('⚠️ MQTT Offline');
-      this.connected = false;
-      this.emit('offline');
-    });
+  async connect(brokerUrl?: string, clientId?: string): Promise<void> {
+    if (this.connected || this.connecting) return;
 
-    this.client.on('reconnect', () => {
-      this.reconnectAttempts++;
-      console.log(`🔄 MQTT Reconnecting... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      this.emit('reconnecting', { attempts: this.reconnectAttempts });
-    });
+    this.connecting = true;
+    this.brokerUrl = brokerUrl || this.brokerUrl;
+    const { host, port, path, useSSL } = parseWsUrl(this.brokerUrl);
+    const uniqueClientId =
+      clientId || `babygrow_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-    this.client.on('message', (topic: string, payload: Buffer) => {
+    return new Promise((resolve, reject) => {
       try {
-        const message = payload.toString();
-        console.log('📨 MQTT Message:', topic, message);
+        this.client = new Client(host, port, path, uniqueClientId);
 
-        // Parse JSON dari ESP32
-        const data = JSON.parse(message);
+        this.client.onConnectionLost = (response) => {
+          this.connected = false;
+          this.connecting = false;
+          console.warn('[MQTT] connection lost', response?.errorMessage);
+          this.emit('disconnected', response);
+          this.emit('offline');
+        };
 
-        // Validasi data
-        if (topic === 'babygrow/data/sensor' && data.tinggi) {
-          const measurement: MQTTMeasurement = {
-            weight_kg: data.berat || 0,
-            height_cm: data.tinggi,
-            timestamp: new Date().toISOString(),
-            deviceId: data.deviceId || 'ESP32_VL53L0X',
-            quality: this.assessQuality(data.tinggi),
-            batteryLevel: data.battery || 100,
-            signalStrength: data.rssi || -50,
-            temperature: data.temp || 25,
-          };
+        this.client.onMessageArrived = (message) => this.handleMessage(message);
 
-          this.latestMeasurement = measurement;
-          this.emit('measurement', measurement);
-          console.log('📏 Height received:', data.tinggi, 'cm');
-        }
+        this.client.connect({
+          useSSL,
+          timeout: 10,
+          keepAliveInterval: 30,
+          cleanSession: true,
+          reconnect: true,
+          onSuccess: () => {
+            this.connected = true;
+            this.connecting = false;
+            console.log('[MQTT] connected', this.brokerUrl);
+            this.emit('connected', { broker: this.brokerUrl, clientId: uniqueClientId });
+            this.subscribe(this.topic);
+            resolve();
+          },
+          onFailure: (err) => {
+            this.connected = false;
+            this.connecting = false;
+            console.error('[MQTT] connect failed', err?.errorMessage);
+            this.emit('error', err);
+            // Soft-fail: allow UI to continue; caller may use mock trigger
+            reject(new Error(err?.errorMessage || 'MQTT connection failed'));
+          },
+        });
       } catch (error) {
-        console.error('❌ Failed to parse MQTT message:', error);
+        this.connecting = false;
         this.emit('error', error);
+        reject(error);
       }
     });
-    */
   }
 
-  /**
-   * Subscribe to topic
-   */
   subscribe(topic: string): void {
-    if (this.subscriptions.has(topic)) {
-      console.log('Already subscribed to:', topic);
+    if (!this.client || !this.connected) {
+      console.warn('[MQTT] subscribe skipped — not connected');
       return;
     }
+    if (this.subscriptions.has(topic)) return;
 
-    if (!this.connected) {
-      console.error('MQTT not connected. Call connect() first.');
-      return;
-    }
-
-    // Production: this.client.subscribe(topic);
+    this.client.subscribe(topic, { qos: 1 });
     this.subscriptions.add(topic);
-    console.log('✅ Subscribed to:', topic);
+    console.log('[MQTT] subscribed', topic);
   }
 
-  /**
-   * Unsubscribe from topic
-   */
   unsubscribe(topic: string): void {
-    if (!this.subscriptions.has(topic)) {
-      return;
-    }
-
-    // Production: this.client.unsubscribe(topic);
+    if (!this.client || !this.subscriptions.has(topic)) return;
+    this.client.unsubscribe(topic);
     this.subscriptions.delete(topic);
-    console.log('Unsubscribed from:', topic);
   }
 
-  /**
-   * Publish command to device
-   */
-  publishCommand(deviceId: string, command: string, params?: any): void {
+  publishCommand(deviceId: string, command: string, params?: Record<string, unknown>): void {
+    if (!this.client || !this.connected) return;
+
     const topic = `babygrow/device/${deviceId}/command`;
-    
-    const message = {
+    const body = JSON.stringify({
       command_id: `cmd_${Date.now()}`,
       timestamp: new Date().toISOString(),
       command,
       parameters: params || {},
-    };
-
-    if (this.connected && this.client) {
-      // Production: this.client.publish(topic, JSON.stringify(message), { qos: 1 });
-      console.log('[SIMULASI] Published command:', topic, message);
-    }
+    });
+    const message = new Message(body);
+    message.destinationName = topic;
+    message.qos = 1;
+    this.client.send(message);
   }
 
-  /**
-   * Disconnect from MQTT broker
-   */
-  disconnect(): void {
-    if (this.client) {
-      // Production: this.client.end();
-      this.client = null;
-    }
+  /** Dev/demo helper when hardware is offline */
+  triggerMockMeasurement(): void {
+    const height = 78.5 + (Math.random() * 4 - 2);
+    const weight = 9.5 + Math.random() * 1.5;
+    const mockData: MQTTMeasurement = {
+      weight_kg: parseFloat(weight.toFixed(1)),
+      height_cm: parseFloat(height.toFixed(1)),
+      timestamp: new Date().toISOString(),
+      deviceId: 'ESP32_MOCK',
+      quality: this.assessQuality(height),
+      batteryLevel: 90,
+      signalStrength: -50,
+      temperature: 25,
+    };
+    this.latestMeasurement = mockData;
+    this.emit('measurement', mockData);
+  }
 
+  /** Soft-connect for demo when broker unreachable */
+  markSimulatedConnected(): void {
+    this.connected = true;
+    this.emit('connected', { broker: this.brokerUrl, simulated: true });
+    this.subscriptions.add(this.topic);
+  }
+
+  getLatestMeasurement(): MQTTMeasurement | null {
+    return this.latestMeasurement;
+  }
+
+  disconnect(): void {
+    try {
+      this.client?.disconnect();
+    } catch {
+      // ignore
+    }
+    this.client = null;
     this.connected = false;
     this.subscriptions.clear();
-    console.log('Disconnected from MQTT');
     this.emit('disconnected');
   }
 
-  /**
-   * Check connection status
-   */
   isConnected(): boolean {
     return this.connected;
   }
 
-  /**
-   * Get connection status details
-   */
   getStatus(): MQTTConnectionStatus {
     return {
       connected: this.connected,
@@ -326,11 +263,8 @@ class MQTTService {
     };
   }
 
-  /**
-   * Clean up all listeners (for unmount)
-   */
   removeAllListeners(): void {
-    this.eventListeners.forEach(listeners => listeners.clear());
+    this.eventListeners.forEach((listeners) => listeners.clear());
   }
 }
 

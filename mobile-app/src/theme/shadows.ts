@@ -1,11 +1,9 @@
 /**
- * Shadow Design Tokens
- * Filosofi: VIBRANT PINK & ELEGANT WHITE
- * Premium shadows untuk glassmorphism & neumorphism
+ * BabyGrow Design Tokens — Shadows
+ * Interim source pending `desain ui/desainuiux.md`.
  */
 
 export const shadows = {
-  // Soft Shadows (Ultra Soft - Modern Clean)
   soft: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -13,8 +11,6 @@ export const shadows = {
     shadowRadius: 6,
     elevation: 1,
   },
-  
-  // Standard Shadow (Cards, Buttons - Soft & Elegant)
   standard: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -22,8 +18,6 @@ export const shadows = {
     shadowRadius: 12,
     elevation: 2,
   },
-  
-  // Medium Shadow (Elevated Cards - Soft Floating)
   medium: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
@@ -31,69 +25,27 @@ export const shadows = {
     shadowRadius: 16,
     elevation: 4,
   },
-  
-  // Large Shadow (Full Pages - Premium Depth)
   large: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.1,
     shadowRadius: 24,
     elevation: 6,
   },
-  
-  // Pink Shadow - Soft & Professional (High-End)
   pink: {
-    shadowColor: '#FF6B95',  // Vibrant Pink
+    shadowColor: '#FF6B95',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,     // Very subtle - high-end look
-    shadowRadius: 20,        // Soft blur
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
     elevation: 6,
   },
-  
-  // Card Shadow - Glassmorphism Style (Very Subtle)
   card: {
-    shadowColor: '#000000',  // Neutral shadow for glass effect
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,     // Very subtle - glassmorphism
-    shadowRadius: 24,        // Soft, wide blur
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
     elevation: 4,
   },
-  
-  // Elevated Card Shadow - Premium depth
-  cardElevated: {
-    shadowColor: '#FF6B95',  // Pink tint
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 30,
-    elevation: 8,
-  },
-  
-  // Glassmorphism Shadow (Subtle, Blurred)
-  glass: {
-    shadowColor: '#FF85A1',  // Light pink tint
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 4,
-  },
-  
-  // Neumorphism Shadow (Soft Depth)
-  neumorphic: {
-    light: {
-      shadowColor: '#FFFFFF',
-      shadowOffset: { width: -4, height: -4 },
-      shadowOpacity: 0.5,
-      shadowRadius: 8,
-    },
-    dark: {
-      shadowColor: '#000',
-      shadowOffset: { width: 4, height: 4 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-    },
-  },
-  
-  // Deprecated (keep for backwards compatibility)
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -115,13 +67,6 @@ export const shadows = {
     shadowRadius: 15,
     elevation: 5,
   },
-  xl: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.15,
-    shadowRadius: 25,
-    elevation: 8,
-  },
-};
+} as const;
 
 export default shadows;

@@ -1,18 +1,17 @@
 /**
- * Border Radius Design Tokens
- * Filosofi: EXTRA ROUNDED CORNERS - Modern Clean Design
- * Revisi: Sudut membulat ekstra untuk estetika premium
+ * BabyGrow Design Tokens — Border Radius
+ * Interim source pending `desain ui/desainuiux.md`.
  */
 
 export const borderRadius = {
   none: 0,
-  xs: 12,      // Small elements (tags, badges)
-  sm: 16,      // Input fields
-  md: 16,      // Buttons - KAI standard
-  lg: 24,      // Cards - KAI extra large
-  xl: 24,      // Large cards - KAI extra large
-  xxl: 24,     // Main containers - KAI consistent
-  full: 9999,  // Pills, avatar, icon circles (fully rounded)
-};
+  xs: 12,
+  sm: 16,
+  md: 16,
+  lg: 24,
+  xl: 24,
+  xxl: 24,
+  full: 9999,
+} as const;
 
 export default borderRadius;

@@ -1,6 +1,5 @@
 /**
- * BabyGrow Text Input Component
- * Form input with validation support
+ * BabyGrow Input — Atomic Component
  */
 
 import React, { useState } from 'react';
@@ -36,37 +35,43 @@ export const Input: React.FC<InputProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
 
-  const inputContainerStyle = [
-    styles.inputContainer,
-    isFocused && styles.inputContainerFocused,
-    error && styles.inputContainerError,
-  ];
-
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && (
+      {label ? (
         <Text style={styles.label}>
           {label}
-          {required && <Text style={styles.required}> *</Text>}
+          {required ? <Text style={styles.required}> *</Text> : null}
         </Text>
-      )}
-      
-      <View style={inputContainerStyle}>
-        {leftIcon && <View style={styles.iconLeft}>{leftIcon}</View>}
-        
+      ) : null}
+
+      <View
+        style={[
+          styles.inputContainer,
+          isFocused && styles.inputContainerFocused,
+          !!error && styles.inputContainerError,
+        ]}
+      >
+        {leftIcon ? <View style={styles.iconLeft}>{leftIcon}</View> : null}
+
         <TextInput
-          style={[styles.input, leftIcon && styles.inputWithLeftIcon]}
+          style={[styles.input, leftIcon ? styles.inputWithLeftIcon : null]}
           placeholderTextColor={colors.text.disabled}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
+          onFocus={(e) => {
+            setIsFocused(true);
+            textInputProps.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            textInputProps.onBlur?.(e);
+          }}
           {...textInputProps}
         />
-        
-        {rightIcon && <View style={styles.iconRight}>{rightIcon}</View>}
+
+        {rightIcon ? <View style={styles.iconRight}>{rightIcon}</View> : null}
       </View>
 
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      {!error && helperText && <Text style={styles.helperText}>{helperText}</Text>}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {!error && helperText ? <Text style={styles.helperText}>{helperText}</Text> : null}
     </View>
   );
 };
@@ -89,7 +94,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background.paper,
     borderWidth: 1,
-    borderColor: colors.border.default,
+    borderColor: colors.border.input,
     borderRadius: borderRadius.sm,
     minHeight: 48,
   },

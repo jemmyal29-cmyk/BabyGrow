@@ -1,265 +1,126 @@
-import React, { useState } from 'react';
+/**
+ * Children Screen — Supabase via React Query
+ */
+
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
-  Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '../theme';
-import type { Child } from '../types/models';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useAuth } from '../store/authStore';
+import { useIsAdmin } from '../store/authStore';
+import { ageLabelFromDob, useChildren } from '../hooks/useChildrenQueries';
+import { Button } from '../components/common';
 
-type RootStackParamList = {
-  Home: undefined;
-  Children: undefined;
-  Growth: undefined;
-  Profile: undefined;
-};
+export default function ChildrenScreen({ navigation }: any) {
+  const { user } = useAuth();
+  const isAdmin = useIsAdmin();
+  const { data: children = [], isLoading, isError, error, refetch, isRefetching } =
+    useChildren(
+      isAdmin
+        ? { fetchAll: true }
+        : { parentId: user?.id }
+    );
 
-type ChildrenScreenProps = {
-  navigation: BottomTabNavigationProp<RootStackParamList, 'Children'>;
-};
+  const list = children;
 
-interface ChildDisplay extends Pick<Child, 'id' | 'name' | 'gender'> {
-  birthDate: string;
-  age: string;
-  weight: string;
-  height: string;
-  status: string;
-  emoji: string;
-}
-
-export default function ChildrenScreen({ navigation }: ChildrenScreenProps) {
   const handleAddChild = () => {
-    // Navigate to AddChild full page screen (ANTI POP-UP POLICY)
-    const rootNavigation = (navigation as any).getParent();
-    if (rootNavigation) {
-      rootNavigation.navigate('AddChild');
-    }
+    navigation.getParent()?.navigate('AddChild');
   };
 
-  const handleChildPress = (child: ChildDisplay) => {
-    // Navigate to ChildDetail full page screen (ANTI POP-UP POLICY)
-    const rootNavigation = (navigation as any).getParent();
-    if (rootNavigation) {
-      rootNavigation.navigate('ChildDetail', { child });
-    }
+  const handleChildPress = (child: (typeof list)[number]) => {
+    navigation.getParent()?.navigate('ChildDetail', { child });
   };
 
-  const handleGrowthChart = (child: ChildDisplay) => {
-    navigation.navigate('Growth');
+  const handleGrowthChart = (childId: string) => {
+    navigation.getParent()?.navigate('GrowthChart', { childId });
   };
-
-  const handleMeasure = (child: ChildDisplay) => {
-    // Navigate to Measurement Input full page (future implementation)
-    Alert.alert(
-      '📏 Ukur ' + child.name,
-      'Halaman input pengukuran akan terbuka.\n\n' +
-      'Form akan berisi:\n\n' +
-      '• Berat Badan (kg)\n' +
-      '• Tinggi Badan (cm)\n' +
-      '• Lingkar Kepala (cm)\n' +
-      '• Tanggal Pengukuran\n' +
-      '• Catatan (opsional)\n\n' +
-      'Setelah disimpan, AI akan menganalisis dan memberikan rekomendasi',
-      [{ text: 'Mengerti', style: 'default' }]
-    );
-  };
-
-  const handleAnalyze = (child: ChildDisplay) => {
-    Alert.alert(
-      '🤖 Analisis AI',
-      'AI akan menganalisis pertumbuhan ' + child.name + ' berdasarkan data terakhir',
-      [
-        { text: 'Batal', style: 'cancel' },
-        { 
-          text: 'Analisis Sekarang',
-          onPress: () => {
-            // Simulasi analisis AI
-            setTimeout(() => {
-              Alert.alert(
-                '✨ Hasil Analisis AI',
-                '📊 Pertumbuhan ' + child.name + ':\n\n' +
-                '✅ Berat: Normal (Z-score: 0.2)\n' +
-                '✅ Tinggi: Normal (Z-score: -0.5)\n' +
-                '✅ Status: Sehat\n\n' +
-                '💡 Rekomendasi:\n' +
-                '• Pertahankan pola makan bergizi\n' +
-                '• Lanjutkan pemantauan rutin\n' +
-                '• Konsultasi rutin setiap bulan\n\n' +
-                'Untuk analisis lengkap, chat dengan BabyGrow AI',
-                [
-                  { text: 'Tutup', style: 'cancel' },
-                  { text: 'Chat AI', onPress: () => (navigation as any).getParent()?.navigate('AIAssistant') }
-                ]
-              );
-            }, 500);
-          }
-        }
-      ]
-    );
-  };
-
-  const handleEdit = (child: ChildDisplay) => {
-    Alert.alert(
-      '✏️ Edit Data',
-      'Edit informasi ' + child.name,
-      [
-        { text: 'Batal', style: 'cancel' },
-        { 
-          text: 'Edit',
-          onPress: () => {
-            Alert.alert(
-              '📝 Form Edit',
-              'Anda dapat mengubah:\n\n' +
-              '• Nama: ' + child.name + '\n' +
-              '• Tanggal Lahir: ' + child.birthDate + '\n' +
-              '• Foto Profil\n' +
-              '• Data Lahir\n' +
-              '• Catatan\n\n' +
-              'Fitur edit sedang dalam pengembangan',
-              [{ text: 'Mengerti', style: 'default' }]
-            );
-          }
-        }
-      ]
-    );
-  };
-
-  const [children] = useState<ChildDisplay[]>([
-    {
-      id: '1',
-      name: 'Aisha Putri',
-      gender: 'female',
-      birthDate: '15 Mei 2024',
-      age: '8 bulan',
-      weight: '8.2 kg',
-      height: '68 cm',
-      status: 'Sehat',
-      emoji: '👧',
-    },
-    {
-      id: '2',
-      name: 'Budi Santoso',
-      gender: 'male',
-      birthDate: '20 Jan 2023',
-      age: '3 tahun',
-      weight: '14.5 kg',
-      height: '95 cm',
-      status: 'Sehat',
-      emoji: '👦',
-    },
-  ]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={colors.primary.main}
+          />
+        }
       >
-        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Profil Anak</Text>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={handleAddChild}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.addButtonText}>+ Tambah Anak</Text>
+          <Text style={styles.title}>{isAdmin ? 'Data Balita' : 'Profil Anak'}</Text>
+          <TouchableOpacity style={styles.addButton} onPress={handleAddChild}>
+            <Text style={styles.addButtonText}>+ Tambah</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Children List */}
-        {children.map((child) => (
-          <TouchableOpacity 
-            key={child.id} 
-            style={styles.childCard}
+        {isLoading ? (
+          <ActivityIndicator color={colors.primary.main} style={{ marginTop: spacing.xl }} />
+        ) : null}
+
+        {isError ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Gagal memuat data</Text>
+            <Text style={styles.emptyDesc}>{(error as Error)?.message}</Text>
+            <Button title="Coba Lagi" onPress={() => refetch()} style={{ marginTop: spacing.md }} />
+          </View>
+        ) : null}
+
+        {!isLoading && !isError && list.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyEmoji}>👶</Text>
+            <Text style={styles.emptyTitle}>Belum ada data anak</Text>
+            <Text style={styles.emptyDesc}>
+              Tambahkan profil anak untuk mulai menyimpan pengukuran ke Supabase.
+            </Text>
+            <Button title="Tambah Anak" onPress={handleAddChild} style={{ marginTop: spacing.md }} />
+          </View>
+        ) : null}
+
+        {list.map((child) => (
+          <TouchableOpacity
+            key={child.id}
+            style={styles.card}
             onPress={() => handleChildPress(child)}
-            activeOpacity={0.9}
+            activeOpacity={0.85}
           >
-            {/* Header Card */}
             <View style={styles.cardHeader}>
-              <View style={styles.avatarContainer}>
-                <Text style={styles.avatarEmoji}>{child.emoji}</Text>
-              </View>
-              <View style={styles.childInfo}>
-                <Text style={styles.childName}>{child.name}</Text>
-                <Text style={styles.childMeta}>
-                  {child.gender} • {child.age}
+              <Text style={styles.emoji}>{child.gender === 'female' ? '👧' : '👦'}</Text>
+              <View style={styles.cardInfo}>
+                <Text style={styles.name}>{child.name}</Text>
+                <Text style={styles.meta}>
+                  {child.gender === 'female' ? 'Perempuan' : 'Laki-laki'} ·{' '}
+                  {ageLabelFromDob(child.date_of_birth)}
                 </Text>
               </View>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>✓ {child.status}</Text>
-              </View>
             </View>
-
-            {/* Stats Grid */}
-            <View style={styles.statsGrid}>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Berat Badan</Text>
-                <Text style={styles.statValue}>{child.weight}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Tinggi Badan</Text>
-                <Text style={styles.statValue}>{child.height}</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statLabel}>Lahir</Text>
-                <Text style={styles.statValue}>{child.birthDate}</Text>
-              </View>
-            </View>
-
-            {/* Action Buttons */}
-            <View style={styles.actionRow}>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleGrowthChart(child)}
-                activeOpacity={0.7}
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => handleGrowthChart(child.id)}
               >
-                <Text style={styles.actionIcon}>📊</Text>
                 <Text style={styles.actionText}>Grafik</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleMeasure(child)}
-                activeOpacity={0.7}
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionPrimary]}
+                onPress={() =>
+                  navigation.getParent()?.navigate('ManualMeasurement', { childId: child.id })
+                }
               >
-                <Text style={styles.actionIcon}>📏</Text>
-                <Text style={styles.actionText}>Ukur</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleAnalyze(child)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.actionIcon}>🤖</Text>
-                <Text style={styles.actionText}>Analisis</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleEdit(child)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.actionIcon}>✏️</Text>
-                <Text style={styles.actionText}>Edit</Text>
+                <Text style={[styles.actionText, styles.actionPrimaryText]}>Ukur</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
         ))}
-
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoIcon}>ℹ️</Text>
-          <Text style={styles.infoText}>
-            Tambahkan data anak untuk memulai monitoring pertumbuhan dengan AI
-          </Text>
-        </View>
-
-        <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -268,144 +129,107 @@ export default function ChildrenScreen({ navigation }: ChildrenScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.default,
+    backgroundColor: colors.background.elevated,
   },
   scrollContent: {
-    paddingBottom: 100, // Extra padding untuk bottom tabs
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.lg,
-    paddingTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
   title: {
     fontSize: typography.fontSize.xxl,
     fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
+    color: colors.text.primary,
   },
   addButton: {
     backgroundColor: colors.primary.main,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.sm,
+    ...shadows.pink,
   },
   addButtonText: {
-    color: colors.neutral.white,
-    fontSize: typography.fontSize.sm,
+    color: colors.text.inverse,
     fontWeight: typography.fontWeight.semiBold,
+    fontSize: typography.fontSize.sm,
   },
-  childCard: {
+  card: {
     backgroundColor: colors.background.paper,
-    margin: spacing.lg,
-    marginTop: spacing.sm,
-    borderRadius: borderRadius.xl,
-    shadowColor: colors.neutral.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: 'hidden',
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.card,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.background.paper,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral.gray200,
+    marginBottom: spacing.md,
   },
-  avatarContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: borderRadius.full,
-    backgroundColor: '#FFE4F3',
-    justifyContent: 'center',
-    alignItems: 'center',
+  emoji: {
+    fontSize: 40,
+    marginRight: spacing.md,
   },
-  avatarEmoji: {
-    fontSize: 32,
-  },
-  childInfo: {
+  cardInfo: {
     flex: 1,
-    marginLeft: spacing.md,
   },
-  childName: {
+  name: {
     fontSize: typography.fontSize.lg,
     fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
+    color: colors.text.primary,
   },
-  childMeta: {
+  meta: {
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    marginTop: spacing.xs,
+    color: colors.text.secondary,
+    marginTop: 2,
   },
-  statusBadge: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.lg,
-  },
-  statusText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.status.success,
-    fontWeight: typography.fontWeight.semiBold,
-  },
-  statsGrid: {
+  actions: {
     flexDirection: 'row',
-    padding: spacing.md,
-    backgroundColor: colors.background.default,
+    gap: spacing.sm,
   },
-  statBox: {
+  actionBtn: {
     flex: 1,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
-    marginBottom: spacing.xs,
-  },
-  statValue: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.primary.main,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    padding: spacing.md,
-    backgroundColor: colors.background.paper,
-  },
-  actionButton: {
-    flex: 1,
-    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primary.main,
+    borderRadius: borderRadius.sm,
     paddingVertical: spacing.sm,
+    alignItems: 'center',
   },
-  actionIcon: {
-    fontSize: typography.fontSize.xxl,
-    marginBottom: spacing.xs,
+  actionPrimary: {
+    backgroundColor: colors.primary.main,
   },
   actionText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    color: colors.primary.main,
+    fontWeight: typography.fontWeight.semiBold,
   },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#E3F2FD',
-    margin: 20,
-    marginTop: 10,
-    padding: 16,
-    borderRadius: 12,
+  actionPrimaryText: {
+    color: colors.text.inverse,
+  },
+  emptyCard: {
+    backgroundColor: colors.background.paper,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
     alignItems: 'center',
+    ...shadows.soft,
   },
-  infoIcon: {
-    fontSize: 24,
-    marginRight: 12,
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: spacing.md,
   },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1976D2',
+  emptyTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  emptyDesc: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
     lineHeight: 20,
   },
 });
