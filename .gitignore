@@ -14,3 +14,8 @@ yarn-debug.log*
 
 # System files
 .DS_Store
+
+# Env secrets
+.env
+.env.local
+mobile-app/.env

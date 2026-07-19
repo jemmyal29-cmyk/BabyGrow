@@ -1,65 +1,95 @@
 /**
- * Live Measurement Card with Animated Numbers
- * Real-time sensor data display with smooth rolling numbers animation
+ * Live Measurement Card — MQTT-backed live sensor display
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring,
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
   withTiming,
-  interpolate,
-  Extrapolate
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const { width } = Dimensions.get('window');
+import MQTTService from '../../services/MQTTService';
+import type { MQTTMeasurement } from '../../types';
+import { colors, spacing, typography, borderRadius } from '../../theme';
 
 interface LiveMeasurementCardProps {
-  height: number;
+  height?: number;
   weight?: number;
-  quality: 'excellent' | 'good' | 'fair' | 'poor';
-  isConnected: boolean;
+  quality?: 'excellent' | 'good' | 'fair' | 'poor';
+  isConnected?: boolean;
+  /** When true, subscribe directly to MQTT singleton stream */
+  bindMqtt?: boolean;
 }
 
-export function LiveMeasurementCard({ 
-  height, 
-  weight, 
-  quality, 
-  isConnected 
+export function LiveMeasurementCard({
+  height: heightProp = 0,
+  weight: weightProp = 0,
+  quality: qualityProp = 'good',
+  isConnected: connectedProp = false,
+  bindMqtt = false,
 }: LiveMeasurementCardProps) {
-  const heightValue = useSharedValue(0);
+  const [height, setHeight] = useState(heightProp);
+  const [weight, setWeight] = useState(weightProp);
+  const [quality, setQuality] = useState(qualityProp);
+  const [isConnected, setIsConnected] = useState(connectedProp);
   const [displayHeight, setDisplayHeight] = useState(0);
   const glowOpacity = useSharedValue(0);
 
   useEffect(() => {
-    if (isConnected && height > 0) {
-      // Animated height number
-      heightValue.value = withSpring(height, {
-        damping: 15,
-        stiffness: 100,
-      });
-
-      // Update display with smooth transition
-      const interval = setInterval(() => {
-        setDisplayHeight(prev => {
-          const diff = height - prev;
-          if (Math.abs(diff) < 0.1) return height;
-          return prev + diff * 0.15;
-        });
-      }, 50);
-
-      // Glow effect when data received
-      glowOpacity.value = withTiming(1, { duration: 300 }, () => {
-        glowOpacity.value = withTiming(0, { duration: 1000 });
-      });
-
-      return () => clearInterval(interval);
+    if (!bindMqtt) {
+      setHeight(heightProp);
+      setWeight(weightProp ?? 0);
+      setQuality(qualityProp);
+      setIsConnected(connectedProp);
+      return;
     }
-  }, [height, isConnected]);
+
+    const mqtt = MQTTService.getInstance();
+    setIsConnected(mqtt.isConnected());
+
+    const onConnected = () => setIsConnected(true);
+    const onOffline = () => setIsConnected(false);
+    const onMeasurement = (data: unknown) => {
+      const m = data as MQTTMeasurement;
+      setHeight(m.height_cm);
+      setWeight(m.weight_kg || 0);
+      setQuality(m.quality);
+      setIsConnected(true);
+    };
+
+    mqtt.on('connected', onConnected);
+    mqtt.on('offline', onOffline);
+    mqtt.on('disconnected', onOffline);
+    mqtt.on('measurement', onMeasurement);
+
+    return () => {
+      mqtt.off('connected', onConnected);
+      mqtt.off('offline', onOffline);
+      mqtt.off('disconnected', onOffline);
+      mqtt.off('measurement', onMeasurement);
+    };
+  }, [bindMqtt, heightProp, weightProp, qualityProp, connectedProp]);
+
+  useEffect(() => {
+    if (!isConnected || height <= 0) return;
+
+    const interval = setInterval(() => {
+      setDisplayHeight((prev) => {
+        const diff = height - prev;
+        if (Math.abs(diff) < 0.1) return height;
+        return prev + diff * 0.15;
+      });
+    }, 50);
+
+    glowOpacity.value = withTiming(1, { duration: 300 }, () => {
+      glowOpacity.value = withTiming(0, { duration: 1000 });
+    });
+
+    return () => clearInterval(interval);
+  }, [height, isConnected, glowOpacity]);
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
@@ -67,30 +97,39 @@ export function LiveMeasurementCard({
 
   const getQualityColor = () => {
     switch (quality) {
-      case 'excellent': return '#4CAF50';
-      case 'good': return '#8BC34A';
-      case 'fair': return '#FFC107';
-      case 'poor': return '#FF5722';
-      default: return '#9E9E9E';
+      case 'excellent':
+        return colors.status.success;
+      case 'good':
+        return '#8BC34A';
+      case 'fair':
+        return colors.status.warning;
+      case 'poor':
+        return colors.status.error;
+      default:
+        return colors.neutral.gray500;
     }
   };
 
   const getQualityText = () => {
     switch (quality) {
-      case 'excellent': return 'Sangat Baik';
-      case 'good': return 'Baik';
-      case 'fair': return 'Cukup';
-      case 'poor': return 'Kurang';
-      default: return 'Tidak Diketahui';
+      case 'excellent':
+        return 'Sangat Baik';
+      case 'good':
+        return 'Baik';
+      case 'fair':
+        return 'Cukup';
+      case 'poor':
+        return 'Kurang';
+      default:
+        return '—';
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* Glow Effect */}
       <Animated.View style={[styles.glowContainer, glowStyle]}>
         <LinearGradient
-          colors={['rgba(255, 105, 180, 0.4)', 'rgba(255, 105, 180, 0)']}
+          colors={['rgba(255, 25, 118, 0.35)', 'rgba(255, 25, 118, 0)']}
           style={styles.glow}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
@@ -99,19 +138,27 @@ export function LiveMeasurementCard({
 
       <BlurView intensity={50} tint="light" style={styles.blurCard}>
         <LinearGradient
-          colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 182, 193, 0.3)']}
+          colors={['rgba(255, 255, 255, 0.92)', 'rgba(255, 228, 243, 0.45)']}
           style={styles.gradient}
         >
-          {/* Header */}
           <View style={styles.header}>
             <View style={styles.iconContainer}>
               <Text style={styles.icon}>📡</Text>
-              <View style={[styles.statusDot, { backgroundColor: isConnected ? '#4CAF50' : '#9E9E9E' }]} />
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: isConnected
+                      ? colors.status.success
+                      : colors.neutral.gray500,
+                  },
+                ]}
+              />
             </View>
             <View style={styles.headerText}>
               <Text style={styles.title}>Live Sensor</Text>
               <Text style={styles.subtitle}>
-                {isConnected ? 'Terhubung' : 'Tidak Terhubung'}
+                {isConnected ? 'Terhubung (MQTT)' : 'Tidak Terhubung'}
               </Text>
             </View>
             <View style={[styles.qualityBadge, { backgroundColor: getQualityColor() }]}>
@@ -119,22 +166,24 @@ export function LiveMeasurementCard({
             </View>
           </View>
 
-          {/* Main Display */}
           <View style={styles.mainDisplay}>
             <View style={styles.measurement}>
               <Text style={styles.label}>Tinggi Badan</Text>
               <View style={styles.valueContainer}>
-                <Text style={styles.value}>
-                  {displayHeight.toFixed(1)}
-                </Text>
+                <Text style={styles.value}>{displayHeight.toFixed(1)}</Text>
                 <Text style={styles.unit}>cm</Text>
               </View>
               <View style={styles.indicator}>
-                <View style={[styles.indicatorBar, { width: `${Math.min(height / 1.2, 100)}%` }]} />
+                <View
+                  style={[
+                    styles.indicatorBar,
+                    { width: `${Math.min((height / 120) * 100, 100)}%` },
+                  ]}
+                />
               </View>
             </View>
 
-            {weight !== undefined && weight > 0 && (
+            {weight > 0 ? (
               <View style={styles.measurement}>
                 <Text style={styles.label}>Berat Badan</Text>
                 <View style={styles.valueContainer}>
@@ -142,24 +191,18 @@ export function LiveMeasurementCard({
                   <Text style={styles.unit}>kg</Text>
                 </View>
               </View>
-            )}
+            ) : null}
           </View>
 
-          {/* Device Info */}
           <View style={styles.footer}>
-            <View style={styles.deviceInfo}>
-              <Text style={styles.deviceIcon}>🔧</Text>
-              <Text style={styles.deviceText}>ESP32 VL53L0X</Text>
-            </View>
-            <View style={styles.timestampContainer}>
-              <Text style={styles.timestamp}>
-                {new Date().toLocaleTimeString('id-ID', { 
-                  hour: '2-digit', 
-                  minute: '2-digit',
-                  second: '2-digit'
-                })}
-              </Text>
-            </View>
+            <Text style={styles.deviceText}>ESP32 · WebSocket MQTT</Text>
+            <Text style={styles.timestamp}>
+              {new Date().toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              })}
+            </Text>
           </View>
         </LinearGradient>
       </BlurView>
@@ -170,7 +213,7 @@ export function LiveMeasurementCard({
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   glowContainer: {
     position: 'absolute',
@@ -182,30 +225,25 @@ const styles = StyleSheet.create({
   },
   glow: {
     flex: 1,
-    borderRadius: 30,
+    borderRadius: borderRadius.xl,
   },
   blurCard: {
-    borderRadius: 24,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 105, 180, 0.3)',
-    shadowColor: '#FF69B4',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+    borderColor: colors.border.glass,
   },
   gradient: {
-    padding: 20,
+    padding: spacing.lg,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.md,
   },
   iconContainer: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: spacing.sm,
   },
   icon: {
     fontSize: 32,
@@ -218,101 +256,88 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: colors.neutral.white,
   },
   headerText: {
     flex: 1,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#212121',
-    marginBottom: 2,
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
   },
   subtitle: {
-    fontSize: 13,
-    color: '#757575',
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
   },
   qualityBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.xs,
   },
   qualityText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.inverse,
   },
   mainDisplay: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   measurement: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#757575',
-    marginBottom: 8,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
   },
   valueContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   value: {
-    fontSize: 48,
-    fontWeight: '800',
-    color: '#FF69B4',
+    fontSize: typography.fontSize.display,
+    fontWeight: typography.fontWeight.extraBold,
+    color: colors.primary.main,
     letterSpacing: -2,
   },
   unit: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FF69B4',
-    marginLeft: 8,
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary.main,
+    marginLeft: spacing.sm,
   },
   indicator: {
     height: 6,
-    backgroundColor: 'rgba(255, 105, 180, 0.2)',
+    backgroundColor: colors.primary.lighter,
     borderRadius: 3,
-    marginTop: 8,
+    marginTop: spacing.sm,
     overflow: 'hidden',
   },
   indicatorBar: {
     height: '100%',
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary.main,
     borderRadius: 3,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  deviceInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  deviceIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    borderTopColor: colors.border.divider,
   },
   deviceText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#757575',
-  },
-  timestampContainer: {
-    backgroundColor: 'rgba(255, 105, 180, 0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.secondary,
   },
   timestamp: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FF69B4',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary.main,
   },
 });
+
+export default LiveMeasurementCard;

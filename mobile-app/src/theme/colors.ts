@@ -1,142 +1,128 @@
 /**
- * BabyGrow Color Palette - VIBRANT PINK ORIGINAL
- * PINK DOMINAN & MENARIK - Desain yang Anda Suka!
+ * BabyGrow Design Tokens — Colors
+ * Interim source: existing production palette (Vibrant Pink).
+ * Official design file `desain ui/desainuiux.md` is currently empty (0 bytes).
+ * When that file is populated, these tokens MUST be updated to match 100%.
  */
 
 export const colors = {
-  // Primary Colors - VIBRANT PINK CERAH (KAI-INSPIRED FRESH!)
+  /** Convenience aliases used by legacy screens */
+  white: '#FFFFFF',
+  info: '#64B5F6',
+
   primary: {
-    main: '#FF1976',      // Vibrant Pink - FRESH & ENERGETIC!
-    vibrant: '#FF85A1',   // Light Vibrant Pink - CHEERFUL!
-    light: '#FFB3D9',     // Soft Pink
-    lighter: '#FFE4F3',   // Ultra Soft Pink
-    dark: '#E91E63',      // Dark Vibrant Pink - BOLD!
-    contrast: '#FFFFFF',  // Pure White text on pink
+    main: '#FF1976',
+    vibrant: '#FF85A1',
+    light: '#FFB3D9',
+    lighter: '#FFE4F3',
+    dark: '#E91E63',
+    contrast: '#FFFFFF',
   },
-  
-  // Pink Shades for Gradients & Layers (VIBRANT PINK!)
+
   pink: {
-    50: '#FFE4F3',        // Ultra light vibrant pink
-    100: '#FFB3D9',       // Very light vibrant pink
-    200: '#FF85A1',       // Light vibrant pink
-    300: '#FF6B95',       // Medium vibrant pink
-    400: '#FF4081',       // Main vibrant pink
-    500: '#FF1976',       // Deep Vibrant Pink - ENERGETIC!
-    600: '#E91E63',       // Dark Vibrant Pink - BOLD!
-    700: '#C2185B',       // Darkest Pink
-    main: '#FF1976',      // Alias for main
+    50: '#FFE4F3',
+    100: '#FFB3D9',
+    200: '#FF85A1',
+    300: '#FF6B95',
+    400: '#FF4081',
+    500: '#FF1976',
+    600: '#E91E63',
+    700: '#C2185B',
+    main: '#FF1976',
   },
-  
-  // Secondary Colors - Elegant White & Soft Gradients
+
   secondary: {
-    pureWhite: '#FFFFFF', // Pure white - Primary container color
-    offWhite: '#FAFBFC',  // Off-white - Subtle backgrounds
-    lightGray: '#F5F7FA', // Light gray - Dividers, borders
+    pureWhite: '#FFFFFF',
+    offWhite: '#FAFBFC',
+    lightGray: '#F5F7FA',
     gradient: {
-      pinkToWhite: ['#FF85A1', '#FFFFFF'],     // Pink to white gradient
-      vibrantPink: ['#FF6B95', '#FF85A1'],     // Vibrant pink gradient
-      lightPink: ['#FFB3C6', '#FFD6E3'],       // Light pink gradient
-      glassPink: ['rgba(255, 133, 161, 0.2)', 'rgba(255, 255, 255, 0.1)'], // Glassmorphism
+      pinkToWhite: ['#FF85A1', '#FFFFFF'] as const,
+      vibrantPink: ['#FF6B95', '#FF85A1'] as const,
+      lightPink: ['#FFB3C6', '#FFD6E3'] as const,
+      softBg: ['#FFE5EC', '#FFF0F5', '#FFFFFF'] as const,
+      glassPink: ['rgba(255, 133, 161, 0.2)', 'rgba(255, 255, 255, 0.1)'] as const,
     },
   },
-  
-  // Neutral Colors - Clean & Professional (High-End)
+
   neutral: {
-    white: '#FFFFFF',     // Pure White - Clean & elegant
-    black: '#1A1A1A',     // Rich Black - Premium feel
+    white: '#FFFFFF',
+    black: '#1A1A1A',
     gray50: '#FAFBFC',
     gray100: '#F5F5F5',
     gray200: '#EEEEEE',
     gray300: '#E0E0E0',
     gray400: '#BDBDBD',
     gray500: '#9E9E9E',
-    gray600: '#757575',   // Text secondary
-    gray700: '#616161',   // Text primary (not black)
+    gray600: '#757575',
+    gray700: '#616161',
     gray800: '#424242',
     gray900: '#2D2D2D',
   },
-  
-  // Status Colors - Soft Medical Tones
+
   status: {
-    success: '#81C784',   // Soft Green - Less intense
-    warning: '#FFD54F',   // Soft Yellow - Gentle warning
-    error: '#E57373',     // Soft Red - Not alarming
-    info: '#64B5F6',      // Soft Blue - Calming info
+    success: '#81C784',
+    warning: '#FFD54F',
+    error: '#E57373',
+    info: '#64B5F6',
   },
-  
-  // Stunting Risk Colors - Medical Professional
+
   stunting: {
-    normal: '#81C784',         // Soft Green - Healthy
-    atRisk: '#FFD54F',         // Soft Yellow - Attention needed
-    stunted: '#FFB74D',        // Soft Orange - Care required
-    severelyStunted: '#E57373', // Soft Red - Immediate care
+    normal: '#81C784',
+    atRisk: '#FFD54F',
+    stunted: '#FFB74D',
+    severelyStunted: '#E57373',
   },
-  
-  // Background Colors - Pure White & Fresh Pink Balance
+
   background: {
-    default: '#FFFFFF',    // Pure White - Clean & professional (NO PINK BG!)
-    paper: '#FFFFFF',      // Pure White - Clean & professional
-    elevated: '#FAFBFC',   // Off-white - Elevated surfaces
-    gradient: '#FFFFFF',   // White for gradient overlays
-    overlay: 'rgba(255, 25, 118, 0.08)', // Very light pink overlay
-    glass: 'rgba(255, 255, 255, 0.9)',   // Glassmorphism background
+    default: '#FFFFFF',
+    paper: '#FFFFFF',
+    elevated: '#FAFBFC',
+    gradient: '#FFFFFF',
+    overlay: 'rgba(255, 25, 118, 0.08)',
+    glass: 'rgba(255, 255, 255, 0.9)',
   },
-  
-  // Text Colors - High Contrast (Premium Readability)
+
   text: {
-    primary: '#1A1A1A',    // Rich Black - Premium feel
-    secondary: '#616161',  // Dark Gray - Secondary info
-    tertiary: '#9E9E9E',   // Medium Gray - Hints
-    disabled: '#BDBDBD',   // Light Gray - Disabled
-    onPink: '#FFFFFF',     // White text on pink
-    onWhite: '#1A1A1A',    // Black text on white
-    inverse: '#FFFFFF',    // White text
+    primary: '#1A1A1A',
+    secondary: '#616161',
+    tertiary: '#9E9E9E',
+    disabled: '#BDBDBD',
+    onPink: '#FFFFFF',
+    onWhite: '#1A1A1A',
+    inverse: '#FFFFFF',
   },
-  
-  // Border Colors - Vibrant Pink & Clean White
+
   border: {
-    default: '#FFB3C6',    // Light vibrant pink
-    light: '#FFD6E3',      // Very light pink
-    dark: '#FF85A1',       // Vibrant pink
-    input: '#FF85A1',      // Input borders (vibrant pink)
-    divider: '#F5F7FA',    // Clean divider (light gray)
-    glass: 'rgba(255, 133, 161, 0.2)', // Glassmorphism border
+    default: '#FFB3C6',
+    light: '#FFD6E3',
+    dark: '#FF85A1',
+    input: '#FF85A1',
+    divider: '#F5F7FA',
+    glass: 'rgba(255, 133, 161, 0.2)',
   },
-  
-  // Chat Bubble Colors - Modern & Contrast
+
   chat: {
-    userBubble: '#FF85A1',      // Vibrant pink for user
-    userText: '#FFFFFF',        // White text on pink
-    aiBubble: '#FFFFFF',        // White for AI (glassmorphism)
-    aiText: '#1A1A1A',          // Rich black text
-    timestamp: '#9E9E9E',       // Gray timestamp
-    shadow: 'rgba(255, 133, 161, 0.15)', // Soft shadow
+    userBubble: '#FF85A1',
+    userText: '#FFFFFF',
+    aiBubble: '#FFFFFF',
+    aiText: '#1A1A1A',
+    timestamp: '#9E9E9E',
+    shadow: 'rgba(255, 133, 161, 0.15)',
   },
-  
-  // Menu Card Colors - Vibrant & Modern
-  menuCard: {
-    pink: '#FF85A1',       // Vibrant pink
-    lightPink: '#FFB3C6',  // Light vibrant pink
-    white: '#FFFFFF',      // Pure white
-    glass: 'rgba(255, 255, 255, 0.7)', // Glassmorphism
-    blue: '#64B5F6',       // Vibrant blue
-    purple: '#BA68C8',     // Vibrant purple
-    green: '#81C784',      // Vibrant green
-    orange: '#FFB74D',     // Vibrant orange
-  },
-  
-  // Glassmorphism & Neumorphism Effects
+
   effects: {
     glassPink: 'rgba(255, 133, 161, 0.2)',
     glassWhite: 'rgba(255, 255, 255, 0.7)',
     glassBlur: 'rgba(255, 255, 255, 0.5)',
-    neumorphLight: '#FFFFFF',
-    neumorphDark: 'rgba(0, 0, 0, 0.05)',
     shadowPink: 'rgba(255, 107, 149, 0.25)',
     shadowLight: 'rgba(0, 0, 0, 0.08)',
     shadowMedium: 'rgba(0, 0, 0, 0.15)',
   },
 
-};
+  /** Admin shell accent */
+  admin: {
+    tabBar: '#1A237E',
+  },
+} as const;
 
 export default colors;

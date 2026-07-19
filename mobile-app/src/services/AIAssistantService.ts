@@ -208,7 +208,7 @@ export class AIAssistantService {
           recentMeasurements: context?.measurements?.slice(0, 3),
           parentHealth: context?.parentHealth, // NEW: Parent health history
           language: context?.language || this.currentLanguage,
-          userRole: this.userRole,
+          userRole: this.currentRole,
         };
 
         // Get REAL AI response from Gemini with enhanced context
@@ -275,7 +275,7 @@ export class AIAssistantService {
     );
 
     // WHO Category
-    const whoCategory = this.determineWHOCategory(zScores);
+    const whoCategory = this.determineCategory(zScores);
 
     // Risk factors including parent health
     const riskFactors = this.identifyRiskFactorsWithParentHealth(

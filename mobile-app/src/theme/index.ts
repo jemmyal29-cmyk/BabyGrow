@@ -1,6 +1,5 @@
 /**
- * BabyGrow Theme - Centralized Design System
- * Halodoc-inspired pink theme
+ * BabyGrow Theme — Centralized Design System
  */
 
 import { colors } from './colors';
@@ -9,7 +8,6 @@ import { spacing } from './spacing';
 import { borderRadius } from './borderRadius';
 import { shadows } from './shadows';
 
-// Z-index values
 export const zIndex = {
   dropdown: 1000,
   sticky: 1020,
@@ -18,16 +16,18 @@ export const zIndex = {
   modal: 1050,
   popover: 1060,
   tooltip: 1070,
-};
+} as const;
 
-// Export all theme tokens
 export { colors, typography, spacing, borderRadius, shadows };
 
-export default {
+const theme = {
   colors,
   typography,
   spacing,
   borderRadius,
   shadows,
   zIndex,
-};
+} as const;
+
+export type Theme = typeof theme;
+export default theme;

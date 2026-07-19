@@ -1,9 +1,8 @@
 /**
- * Growth Chart Screen - Professional Interactive Charts
- * 3D shadows, elegant data transitions, and time range filters
+ * Growth Chart Screen — measurements from Supabase via React Query
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,326 +10,139 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LineChart } from 'react-native-chart-kit';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-// import { useDarkMode } from '../hooks/useDarkMode';
-const { isDarkMode } = { isDarkMode: false }; // Temporary fix
+import { useChildMeasurements } from '../hooks/useChildrenQueries';
+import { Button } from '../components/common';
 
 const { width } = Dimensions.get('window');
 
-interface GrowthChartScreenProps {
-  navigation: any;
-  route: any;
-}
+type Metric = 'weight' | 'height' | 'zscore';
 
-type TimeRange = 'weekly' | 'monthly' | 'yearly';
+export default function GrowthChartScreen({ navigation, route }: any) {
+  const childId: string | undefined = route?.params?.childId;
+  const [metric, setMetric] = useState<Metric>('height');
+  const { data: measurements = [], isLoading, isError, error, refetch } =
+    useChildMeasurements(childId);
 
-export default function GrowthChartScreen({ navigation, route }: GrowthChartScreenProps) {
-  const { isDarkMode } = { isDarkMode: false }; // Temporary fix 
-  const [selectedRange, setSelectedRange] = useState<TimeRange>('monthly');
-  const [selectedMetric, setSelectedMetric] = useState<'weight' | 'height' | 'zscore'>('weight');
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const chart = useMemo(() => {
+    if (measurements.length === 0) {
+      return {
+        labels: ['—'],
+        datasets: [{ data: [0] }],
+      };
+    }
 
-  // Mock chart data
-  const chartData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    datasets: [{
-      data: [10, 10.5, 11, 11.2, 11.5, 11.8]
-    }]
-  };
+    const slice = measurements.slice(-6);
+    const labels = slice.map((m) => {
+      const d = new Date(m.measured_at);
+      return `${d.getDate()}/${d.getMonth() + 1}`;
+    });
 
-  const renderTimeRangeSelector = () => (
-    <View style={styles.timeRangeContainer}>
-      {(['weekly', 'monthly', 'yearly'] as TimeRange[]).map((range) => (
-        <TouchableOpacity
-          key={range}
-          style={[
-            styles.timeRangeButton,
-            selectedRange === range && {
-              backgroundColor: isDarkMode ? colors.pink[100] : colors.pink.main,
-            },
-            { borderColor: isDarkMode ? colors.pink.main : colors.pink.main },
-          ]}
-          onPress={() => setSelectedRange(range)}
-        >
-          <Text
-            style={[
-              styles.timeRangeText,
-              selectedRange === range && { color: '#FFFFFF' },
-              selectedRange !== range && { 
-                color: isDarkMode ? colors.pink[300] : colors.pink.main 
-              },
-            ]}
-          >
-            {range === 'weekly' && 'Mingguan'}
-            {range === 'monthly' && 'Bulanan'}
-            {range === 'yearly' && 'Tahunan'}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
+    const data = slice.map((m) => {
+      if (metric === 'weight') return Number(m.weight_kg ?? 0);
+      if (metric === 'zscore') return Number(m.z_score_hfa ?? 0);
+      return Number(m.height_cm ?? 0);
+    });
 
-  const renderMetricSelector = () => (
-    <View style={styles.metricContainer}>
-      {([
-        { key: 'weight', label: '⚖️ Berat', unit: 'kg' },
-        { key: 'height', label: '📏 Tinggi', unit: 'cm' },
-        { key: 'zscore', label: '📊 Z-Score', unit: '' },
-      ] as Array<{ key: 'weight' | 'height' | 'zscore'; label: string; unit: string }>).map((metric) => (
-        <TouchableOpacity
-          key={metric.key}
-          style={[
-            styles.metricButton,
-            selectedMetric === metric.key && {
-              backgroundColor: isDarkMode ? colors.pink[100] : colors.pink.main,
-            },
-            {
-              backgroundColor: selectedMetric === metric.key 
-                ? (isDarkMode ? colors.pink[400] : colors.pink.main)
-                : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF'),
-            }
-          ]}
-          onPress={() => setSelectedMetric(metric.key)}
-        >
-          <Text
-            style={[
-              styles.metricText,
-              {
-                color: selectedMetric === metric.key 
-                  ? '#FFFFFF'
-                  : (isDarkMode ? '#FFFFFF' : colors.text.primary),
-              }
-            ]}
-          >
-            {metric.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  const renderChart = () => {
-    // Mock data for demonstration
-    const mockData = [
-      { x: 0, y: 3.2, label: 'Lahir' },
-      { x: 3, y: 5.8, label: '3m' },
-      { x: 6, y: 7.4, label: '6m' },
-      { x: 12, y: 9.2, label: '12m' },
-      { x: 18, y: 10.5, label: '18m' },
-    ];
-    
-    return (
-      <View style={styles.customChart}>
-        <View style={styles.chartHeader}>
-          <Text style={[
-            styles.chartAxisLabel,
-            { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-          ]}>
-            {selectedMetric === 'weight' && 'Berat (kg)'}
-            {selectedMetric === 'height' && 'Tinggi (cm)'}
-            {selectedMetric === 'zscore' && 'Z-Score'}
-          </Text>
-        </View>
-        
-        <View style={styles.chartData}>
-          {chartData.datasets[0].data.map((value, index) => {
-            const maxValue = Math.max(...chartData.datasets[0].data);
-            const minValue = Math.min(...chartData.datasets[0].data);
-            const normalizedHeight = ((value - minValue) / (maxValue - minValue)) * 200;
-            
-            return (
-              <View key={index} style={styles.chartColumn}>
-                <Text style={[
-                  styles.chartValue,
-                  { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-                ]}>
-                  {value.toFixed(1)}
-                </Text>
-                <View style={[
-                  styles.chartBar,
-                  {
-                    height: normalizedHeight || 20,
-                    backgroundColor: colors.pink.main,
-                  }
-                ]} />
-                <Text style={[
-                  styles.chartLabel,
-                  { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-                ]}>
-                  {chartData.labels[index]}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </View>
-    );
-  };
-
-  const renderSummaryCards = () => (
-    <View style={styles.summaryContainer}>
-      <View style={[
-        styles.summaryCard,
-        { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-      ]}>
-        <Text style={styles.summaryIcon}>📈</Text>
-        <Text style={[
-          styles.summaryTitle,
-          { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-        ]}>
-          Tren Pertumbuhan
-        </Text>
-        <Text style={[
-          styles.summaryValue,
-          { color: colors.status.success }
-        ]}>
-          ↗️ Positif
-        </Text>
-        <Text style={[
-          styles.summarySubtext,
-          { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-        ]}>
-          Naik konsisten 3 bulan terakhir
-        </Text>
-      </View>
-
-      <View style={[
-        styles.summaryCard,
-        { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-      ]}>
-        <Text style={styles.summaryIcon}>🎯</Text>
-        <Text style={[
-          styles.summaryTitle,
-          { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-        ]}>
-          Target WHO
-        </Text>
-        <Text style={[
-          styles.summaryValue,
-          { color: colors.status.success }
-        ]}>
-          Normal
-        </Text>
-        <Text style={[
-          styles.summarySubtext,
-          { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-        ]}>
-          Dalam rentang standar
-        </Text>
-      </View>
-    </View>
-  );
+    return {
+      labels,
+      datasets: [{ data: data.length ? data : [0] }],
+    };
+  }, [measurements, metric]);
 
   return (
-    <SafeAreaView style={[
-      styles.container,
-      { backgroundColor: isDarkMode ? '#212529' : colors.background.default }
-    ]} edges={['top']}>
-      {/* Header */}
-      <View style={[
-        styles.header,
-        { backgroundColor: isDarkMode ? '#343a40' : '#FFFFFF' }
-      ]}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={[
-            styles.backIcon,
-            { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-          ]}>←</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>← Kembali</Text>
         </TouchableOpacity>
-        <Text style={[
-          styles.headerTitle,
-          { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-        ]}>
-          📊 Grafik Pertumbuhan
-        </Text>
-        <TouchableOpacity style={styles.shareButton}>
-          <Text style={styles.shareIcon}>📤</Text>
-        </TouchableOpacity>
+        <Text style={styles.title}>Grafik Pertumbuhan</Text>
       </View>
 
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {/* Time Range Selector */}
-          {renderTimeRangeSelector()}
-
-          {/* Metric Selector */}
-          {renderMetricSelector()}
-
-          {/* Chart Card */}
-          <View style={[
-            styles.chartCard,
-            { 
-              backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF',
-              ...shadows.lg 
-            }
-          ]}>
-            <Text style={[
-              styles.chartTitle,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-            ]}>
-              {selectedMetric === 'weight' && '⚖️ Grafik Berat Badan'}
-              {selectedMetric === 'height' && '📏 Grafik Tinggi Badan'}
-              {selectedMetric === 'zscore' && '📊 Analisis Z-Score WHO'}
-            </Text>
-            
-            <View style={styles.chartContainer}>
-              {renderChart()}
-            </View>
-          </View>
-
-          {/* Summary Cards */}
-          {renderSummaryCards()}
-
-          {/* Recommendations */}
-          <View style={[
-            styles.recommendationsCard,
-            { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-          ]}>
-            <Text style={[
-              styles.recommendationsTitle,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-            ]}>
-              💡 Rekomendasi
-            </Text>
-            <Text style={[
-              styles.recommendationItem,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-            ]}>
-              • Pertahankan pola makan bergizi seimbang
-            </Text>
-            <Text style={[
-              styles.recommendationItem,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-            ]}>
-              • Lakukan pengukuran rutin setiap 2 minggu
-            </Text>
-            <Text style={[
-              styles.recommendationItem,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-            ]}>
-              • Konsultasi dengan dokter jika tren menurun
-            </Text>
-          </View>
-        </Animated.View>
-
-        {/* UIGM Developer Footer */}
-        <View style={styles.footerContainer}>
-          <View style={styles.uigmFooter}>
-            <Text style={styles.uigmTitle}>🎓 Developed by</Text>
-            <Text style={styles.uigmAuthor}>Jemi Altio</Text>
-            <Text style={styles.uigmDepartment}>Sistem Komputer</Text>
-            <Text style={styles.uigmUniversity}>Universitas Indo Global Mandiri</Text>
-            <Text style={styles.uigmYear}>© 2026</Text>
-          </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.metricRow}>
+          {(
+            [
+              { key: 'height', label: 'Tinggi' },
+              { key: 'weight', label: 'Berat' },
+              { key: 'zscore', label: 'Z-Score' },
+            ] as const
+          ).map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.metricBtn, metric === item.key && styles.metricBtnActive]}
+              onPress={() => setMetric(item.key)}
+            >
+              <Text
+                style={[
+                  styles.metricText,
+                  metric === item.key && styles.metricTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        <View style={{ height: 30 }} />
+        {!childId ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>Pilih anak terlebih dahulu</Text>
+            <Text style={styles.emptyDesc}>
+              Buka tab Anak, lalu ketuk Grafik pada kartu anak.
+            </Text>
+          </View>
+        ) : null}
+
+        {childId && isLoading ? (
+          <ActivityIndicator color={colors.primary.main} style={{ marginTop: spacing.xl }} />
+        ) : null}
+
+        {childId && isError ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>Gagal memuat pengukuran</Text>
+            <Text style={styles.emptyDesc}>{(error as Error)?.message}</Text>
+            <Button title="Coba Lagi" onPress={() => refetch()} style={{ marginTop: spacing.md }} />
+          </View>
+        ) : null}
+
+        {childId && !isLoading && !isError ? (
+          <View style={styles.chartCard}>
+            {measurements.length === 0 ? (
+              <Text style={styles.emptyDesc}>
+                Belum ada data pengukuran di Supabase untuk anak ini.
+              </Text>
+            ) : (
+              <LineChart
+                data={chart}
+                width={width - 48}
+                height={220}
+                chartConfig={{
+                  backgroundColor: colors.neutral.white,
+                  backgroundGradientFrom: colors.neutral.white,
+                  backgroundGradientTo: colors.primary.lighter,
+                  decimalPlaces: 1,
+                  color: (opacity = 1) => `rgba(255, 25, 118, ${opacity})`,
+                  labelColor: () => colors.text.secondary,
+                  propsForDots: {
+                    r: '5',
+                    strokeWidth: '2',
+                    stroke: colors.primary.main,
+                  },
+                }}
+                bezier
+                style={styles.chart}
+              />
+            )}
+            <Text style={styles.caption}>
+              {measurements.length} pengukuran · sumber MQTT / manual
+            </Text>
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -339,228 +151,81 @@ export default function GrowthChartScreen({ navigation, route }: GrowthChartScre
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background.elevated,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...shadows.soft,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-  },
-  shareButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: 'rgba(255, 105, 180, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  shareIcon: {
-    fontSize: 20,
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  content: {
-    padding: spacing.md,
-  },
-  timeRangeContainer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  timeRangeButton: {
-    flex: 1,
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 2,
-    alignItems: 'center',
-    ...shadows.soft,
-  },
-  timeRangeText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold as any,
-  },
-  metricContainer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  metricButton: {
-    flex: 1,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    ...shadows.standard,
-  },
-  metricText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold as any,
-    textAlign: 'center',
-  },
-  chartCard: {
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  chartTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    marginBottom: spacing.md,
-    textAlign: 'center',
-  },
-  chartContainer: {
-    alignItems: 'center',
-  },
-  customChart: {
-    padding: spacing.md,
-    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
-    borderRadius: borderRadius.lg,
-    minHeight: 280,
-  },
-  chartData: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-end',
-    height: 220,
-    paddingTop: spacing.lg,
-  },
-  chartColumn: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  chartValue: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold as any,
-    marginBottom: spacing.xs,
-  },
-  chartBar: {
-    width: 20,
-    borderRadius: borderRadius.sm,
-    marginBottom: spacing.xs,
-    minHeight: 20,
-  },
-  chartLabel: {
-    fontSize: typography.fontSize.xs,
-    textAlign: 'center',
-  },
-  chartAxisLabel: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium as any,
-    textAlign: 'center',
+  back: {
+    color: colors.primary.main,
+    fontWeight: typography.fontWeight.semiBold,
     marginBottom: spacing.sm,
   },
-  chart: {
-    borderRadius: borderRadius.lg,
+  title: {
+    fontSize: typography.fontSize.xxl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
   },
-  summaryContainer: {
+  content: {
+    padding: spacing.lg,
+  },
+  metricRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  summaryCard: {
+  metricBtn: {
     flex: 1,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1.5,
+    borderColor: colors.primary.main,
     alignItems: 'center',
-    ...shadows.standard,
+    backgroundColor: colors.neutral.white,
   },
-  summaryIcon: {
-    fontSize: 32,
-    marginBottom: spacing.xs,
+  metricBtnActive: {
+    backgroundColor: colors.primary.main,
   },
-  summaryTitle: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium as any,
-    marginBottom: spacing.xs,
-  },
-  summaryValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    marginBottom: spacing.xs,
-  },
-  summarySubtext: {
-    fontSize: typography.fontSize.xs,
-    textAlign: 'center',
-  },
-  recommendationsCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    ...shadows.standard,
-  },
-  recommendationsTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    marginBottom: spacing.md,
-  },
-  recommendationItem: {
-    fontSize: typography.fontSize.sm,
-    lineHeight: 20,
-    marginBottom: spacing.xs,
-  },
-  // UIGM Developer Footer
-  footerContainer: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  uigmFooter: {
-    backgroundColor: colors.neutral.gray100,
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.neutral.gray300,
-  },
-  uigmTitle: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium as any,
-    color: colors.neutral.gray600,
-    marginBottom: spacing.xs,
-  },
-  uigmAuthor: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold as any,
+  metricText: {
     color: colors.primary.main,
-    marginBottom: spacing.xs,
+    fontWeight: typography.fontWeight.semiBold,
   },
-  uigmDepartment: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.neutral.gray700,
-    marginBottom: spacing.xs,
+  metricTextActive: {
+    color: colors.text.inverse,
   },
-  uigmUniversity: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
+  chartCard: {
+    backgroundColor: colors.neutral.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    ...shadows.card,
+  },
+  chart: {
+    borderRadius: borderRadius.md,
+  },
+  caption: {
+    marginTop: spacing.sm,
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
     textAlign: 'center',
   },
-  uigmYear: {
-    fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray500,
-    marginTop: spacing.xs,
+  empty: {
+    backgroundColor: colors.neutral.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    ...shadows.soft,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  emptyDesc: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
