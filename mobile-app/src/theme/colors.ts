@@ -1,128 +1,177 @@
 /**
  * BabyGrow Design Tokens — Colors
- * Interim source: existing production palette (Vibrant Pink).
- * Official design file `desain ui/desainuiux.md` is currently empty (0 bytes).
- * When that file is populated, these tokens MUST be updated to match 100%.
+ * Source of truth: mobile-app/desain ui/desainuiux.md (Tailwind / M3 palette)
  */
 
 export const colors = {
-  /** Convenience aliases used by legacy screens */
-  white: '#FFFFFF',
-  info: '#64B5F6',
-
+  /** Brand */
   primary: {
-    main: '#FF1976',
-    vibrant: '#FF85A1',
-    light: '#FFB3D9',
-    lighter: '#FFE4F3',
-    dark: '#E91E63',
-    contrast: '#FFFFFF',
+    main: '#b60059',
+    container: '#e30071',
+    fixed: '#ffd9e1',
+    fixedDim: '#ffb1c4',
+    onPrimary: '#ffffff',
+    onContainer: '#fffbff',
+    onFixed: '#3f001a',
+    onFixedVariant: '#8f0044',
+    /** @deprecated aliases for gradual migration */
+    vibrant: '#e30071',
+    light: '#ffb1c4',
+    lighter: '#ffd9e1',
+    dark: '#8f0044',
+    contrast: '#ffffff',
   },
 
-  pink: {
-    50: '#FFE4F3',
-    100: '#FFB3D9',
-    200: '#FF85A1',
-    300: '#FF6B95',
-    400: '#FF4081',
-    500: '#FF1976',
-    600: '#E91E63',
-    700: '#C2185B',
-    main: '#FF1976',
-  },
-
-  secondary: {
-    pureWhite: '#FFFFFF',
-    offWhite: '#FAFBFC',
-    lightGray: '#F5F7FA',
-    gradient: {
-      pinkToWhite: ['#FF85A1', '#FFFFFF'] as const,
-      vibrantPink: ['#FF6B95', '#FF85A1'] as const,
-      lightPink: ['#FFB3C6', '#FFD6E3'] as const,
-      softBg: ['#FFE5EC', '#FFF0F5', '#FFFFFF'] as const,
-      glassPink: ['rgba(255, 133, 161, 0.2)', 'rgba(255, 255, 255, 0.1)'] as const,
-    },
-  },
-
-  neutral: {
-    white: '#FFFFFF',
-    black: '#1A1A1A',
-    gray50: '#FAFBFC',
-    gray100: '#F5F5F5',
-    gray200: '#EEEEEE',
-    gray300: '#E0E0E0',
-    gray400: '#BDBDBD',
-    gray500: '#9E9E9E',
-    gray600: '#757575',
-    gray700: '#616161',
-    gray800: '#424242',
-    gray900: '#2D2D2D',
-  },
-
-  status: {
-    success: '#81C784',
-    warning: '#FFD54F',
-    error: '#E57373',
-    info: '#64B5F6',
-  },
-
-  stunting: {
-    normal: '#81C784',
-    atRisk: '#FFD54F',
-    stunted: '#FFB74D',
-    severelyStunted: '#E57373',
-  },
-
+  /** Surfaces — light professional */
   background: {
-    default: '#FFFFFF',
-    paper: '#FFFFFF',
-    elevated: '#FAFBFC',
-    gradient: '#FFFFFF',
-    overlay: 'rgba(255, 25, 118, 0.08)',
-    glass: 'rgba(255, 255, 255, 0.9)',
+    default: '#f9f9f9',
+    paper: '#ffffff',
+    elevated: '#f3f3f4',
+    dim: '#dadada',
+    container: '#eeeeee',
+    containerHigh: '#e8e8e8',
+    containerHighest: '#e2e2e2',
+    overlay: 'rgba(182, 0, 89, 0.08)',
+    glass: 'rgba(255, 255, 255, 0.2)',
+    gradient: '#f9f9f9',
+  },
+
+  surface: {
+    default: '#f9f9f9',
+    lowest: '#ffffff',
+    low: '#f3f3f4',
+    mid: '#eeeeee',
+    high: '#e8e8e8',
+    highest: '#e2e2e2',
+    bright: '#f9f9f9',
+    variant: '#e2e2e2',
+    tint: '#ba005b',
   },
 
   text: {
-    primary: '#1A1A1A',
-    secondary: '#616161',
-    tertiary: '#9E9E9E',
-    disabled: '#BDBDBD',
-    onPink: '#FFFFFF',
-    onWhite: '#1A1A1A',
-    inverse: '#FFFFFF',
+    primary: '#1a1c1c',
+    secondary: '#5e5e5e',
+    tertiary: '#5c3f46',
+    disabled: '#c6c6c6',
+    inverse: '#ffffff',
+    onPink: '#ffffff',
+    onWhite: '#1a1c1c',
+    onBackground: '#1a1c1c',
+    onSurface: '#1a1c1c',
+    onSurfaceVariant: '#5c3f46',
+  },
+
+  secondary: {
+    main: '#5e5e5e',
+    container: '#e2e2e2',
+    onSecondary: '#ffffff',
+    onContainer: '#646464',
+    fixed: '#e2e2e2',
+    fixedDim: '#c6c6c6',
+    pureWhite: '#ffffff',
+    offWhite: '#f9f9f9',
+    lightGray: '#f3f3f4',
+    gradient: {
+      softBg: ['#f9f9f9', '#f3f3f4', '#ffffff'] as const,
+      pinkToWhite: ['#ffb1c4', '#ffffff'] as const,
+      vibrantPink: ['#e30071', '#b60059'] as const,
+      lightPink: ['#ffd9e1', '#ffb1c4'] as const,
+      glassPink: ['rgba(182, 0, 89, 0.12)', 'rgba(255, 255, 255, 0.2)'] as const,
+    },
+  },
+
+  outline: {
+    default: '#906e76',
+    variant: '#e5bcc5',
   },
 
   border: {
-    default: '#FFB3C6',
-    light: '#FFD6E3',
-    dark: '#FF85A1',
-    input: '#FF85A1',
-    divider: '#F5F7FA',
-    glass: 'rgba(255, 133, 161, 0.2)',
+    default: '#e5bcc5',
+    light: '#ffd9e1',
+    dark: '#906e76',
+    input: '#e5bcc5',
+    divider: '#eeeeee',
+    glass: 'rgba(182, 0, 89, 0.15)',
+  },
+
+  status: {
+    success: '#008820',
+    warning: '#c9a227',
+    error: '#ba1a1a',
+    errorContainer: '#ffdad6',
+    onError: '#ffffff',
+    info: '#2196F3',
+  },
+
+  stunting: {
+    normal: '#008820',
+    atRisk: '#c9a227',
+    stunted: '#e67e22',
+    severelyStunted: '#ba1a1a',
+  },
+
+  tertiary: {
+    main: '#006b17',
+    container: '#008820',
+    fixed: '#7ffd7c',
+    fixedDim: '#63e063',
+    onTertiary: '#ffffff',
+  },
+
+  /** Legacy pink scale → mapped to design primary */
+  pink: {
+    50: '#ffd9e1',
+    100: '#ffb1c4',
+    200: '#ffb1c4',
+    300: '#e30071',
+    400: '#e30071',
+    500: '#b60059',
+    600: '#8f0044',
+    700: '#3f001a',
+    main: '#b60059',
+  },
+
+  neutral: {
+    white: '#ffffff',
+    black: '#1a1c1c',
+    gray50: '#f9f9f9',
+    gray100: '#f3f3f4',
+    gray200: '#eeeeee',
+    gray300: '#e2e2e2',
+    gray400: '#c6c6c6',
+    gray500: '#5e5e5e',
+    gray600: '#5e5e5e',
+    gray700: '#474747',
+    gray800: '#2f3131',
+    gray900: '#1a1c1c',
   },
 
   chat: {
-    userBubble: '#FF85A1',
-    userText: '#FFFFFF',
-    aiBubble: '#FFFFFF',
-    aiText: '#1A1A1A',
-    timestamp: '#9E9E9E',
-    shadow: 'rgba(255, 133, 161, 0.15)',
+    userBubble: '#b60059',
+    userText: '#ffffff',
+    aiBubble: '#ffffff',
+    aiText: '#1a1c1c',
+    timestamp: '#5e5e5e',
+    shadow: 'rgba(182, 0, 89, 0.15)',
   },
 
   effects: {
-    glassPink: 'rgba(255, 133, 161, 0.2)',
-    glassWhite: 'rgba(255, 255, 255, 0.7)',
-    glassBlur: 'rgba(255, 255, 255, 0.5)',
-    shadowPink: 'rgba(255, 107, 149, 0.25)',
-    shadowLight: 'rgba(0, 0, 0, 0.08)',
-    shadowMedium: 'rgba(0, 0, 0, 0.15)',
+    glassPink: 'rgba(182, 0, 89, 0.1)',
+    glassWhite: 'rgba(255, 255, 255, 0.2)',
+    glassBlur: 'rgba(255, 255, 255, 0.4)',
+    shadowPink: 'rgba(182, 0, 89, 0.3)',
+    shadowLight: 'rgba(0, 0, 0, 0.04)',
+    shadowMedium: 'rgba(0, 0, 0, 0.08)',
+    primaryGlow: 'rgba(182, 0, 89, 0.3)',
   },
 
-  /** Admin shell accent */
   admin: {
-    tabBar: '#1A237E',
+    tabBar: '#2f3131',
   },
+
+  /** Convenience */
+  white: '#ffffff',
+  info: '#2196F3',
 } as const;
 
 export default colors;

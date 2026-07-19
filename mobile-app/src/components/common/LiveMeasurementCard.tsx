@@ -1,9 +1,10 @@
 /**
- * Live Measurement Card — MQTT-backed live sensor display
+ * Live Measurement Card — MQTT live + Supabase realtime Z-Scores
+ * States: no child → skeleton → live/DB data → empty measurement
  */
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { BlurView } from 'expo-blur';
 import Animated, {
   useSharedValue,
@@ -14,14 +15,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MQTTService from '../../services/MQTTService';
 import type { MQTTMeasurement } from '../../types';
 import { colors, spacing, typography, borderRadius } from '../../theme';
+import {
+  useLatestMeasurement,
+  getStuntingDisplay,
+} from '../../hooks/useMeasurements';
+import { useChildStore } from '../../store/childStore';
+import { SkeletonLoader } from './SkeletonLoader';
+import HapticService from '../../services/HapticService';
 
 interface LiveMeasurementCardProps {
   height?: number;
   weight?: number;
   quality?: 'excellent' | 'good' | 'fair' | 'poor';
   isConnected?: boolean;
-  /** When true, subscribe directly to MQTT singleton stream */
+  /** Subscribe to MQTT inside the card (default true) */
   bindMqtt?: boolean;
+  childId?: string | null;
+  onSelectChild?: () => void;
 }
 
 export function LiveMeasurementCard({
@@ -29,14 +39,42 @@ export function LiveMeasurementCard({
   weight: weightProp = 0,
   quality: qualityProp = 'good',
   isConnected: connectedProp = false,
-  bindMqtt = false,
+  bindMqtt = true,
+  childId: childIdProp,
+  onSelectChild,
 }: LiveMeasurementCardProps) {
-  const [height, setHeight] = useState(heightProp);
-  const [weight, setWeight] = useState(weightProp);
+  const storeChildId = useChildStore((s) => s.activeChildId);
+  const childId = childIdProp !== undefined ? childIdProp : storeChildId;
+
+  const {
+    data: latestDb,
+    isPending,
+    isFetching,
+    isError,
+  } = useLatestMeasurement(childId);
+
+  const [height, setHeight] = useState(0);
+  const [weight, setWeight] = useState(0);
   const [quality, setQuality] = useState(qualityProp);
   const [isConnected, setIsConnected] = useState(connectedProp);
   const [displayHeight, setDisplayHeight] = useState(0);
   const glowOpacity = useSharedValue(0);
+
+  // Reset live buffer when active child changes (race-safe)
+  useEffect(() => {
+    setHeight(0);
+    setWeight(0);
+    setDisplayHeight(0);
+    setQuality('good');
+  }, [childId]);
+
+  const onMqttMeasurement = useCallback((data: unknown) => {
+    const m = data as MQTTMeasurement;
+    setHeight(m.height_cm);
+    setWeight(m.weight_kg || 0);
+    setQuality(m.quality);
+    setIsConnected(true);
+  }, []);
 
   useEffect(() => {
     if (!bindMqtt) {
@@ -52,34 +90,40 @@ export function LiveMeasurementCard({
 
     const onConnected = () => setIsConnected(true);
     const onOffline = () => setIsConnected(false);
-    const onMeasurement = (data: unknown) => {
-      const m = data as MQTTMeasurement;
-      setHeight(m.height_cm);
-      setWeight(m.weight_kg || 0);
-      setQuality(m.quality);
-      setIsConnected(true);
-    };
 
     mqtt.on('connected', onConnected);
     mqtt.on('offline', onOffline);
     mqtt.on('disconnected', onOffline);
-    mqtt.on('measurement', onMeasurement);
+    mqtt.on('measurement', onMqttMeasurement);
 
     return () => {
       mqtt.off('connected', onConnected);
       mqtt.off('offline', onOffline);
       mqtt.off('disconnected', onOffline);
-      mqtt.off('measurement', onMeasurement);
+      mqtt.off('measurement', onMqttMeasurement);
     };
-  }, [bindMqtt, heightProp, weightProp, qualityProp, connectedProp]);
+  }, [bindMqtt, heightProp, weightProp, qualityProp, connectedProp, onMqttMeasurement]);
+
+  const displayWeight = useMemo(() => {
+    if (weight > 0) return weight;
+    return latestDb?.weight_kg ?? 0;
+  }, [weight, latestDb?.weight_kg]);
+
+  const resolvedHeight = height > 0 ? height : Number(latestDb?.height_cm ?? 0);
+  const hasLiveOrDb = resolvedHeight > 0;
+  const showSkeleton =
+    !!childId && isPending && !latestDb && height <= 0;
 
   useEffect(() => {
-    if (!isConnected || height <= 0) return;
+    if (resolvedHeight <= 0) {
+      setDisplayHeight(0);
+      return;
+    }
 
     const interval = setInterval(() => {
       setDisplayHeight((prev) => {
-        const diff = height - prev;
-        if (Math.abs(diff) < 0.1) return height;
+        const diff = resolvedHeight - prev;
+        if (Math.abs(diff) < 0.1) return resolvedHeight;
         return prev + diff * 0.15;
       });
     }, 50);
@@ -89,18 +133,28 @@ export function LiveMeasurementCard({
     });
 
     return () => clearInterval(interval);
-  }, [height, isConnected, glowOpacity]);
+  }, [resolvedHeight, glowOpacity, latestDb?.id, childId]);
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glowOpacity.value,
   }));
+
+  const stunting = useMemo(
+    () =>
+      getStuntingDisplay({
+        stunting_risk: latestDb?.stunting_risk,
+        z_score_hfa: latestDb?.z_score_hfa,
+        z_score_wfa: latestDb?.z_score_wfa,
+      }),
+    [latestDb]
+  );
 
   const getQualityColor = () => {
     switch (quality) {
       case 'excellent':
         return colors.status.success;
       case 'good':
-        return '#8BC34A';
+        return colors.tertiary.fixedDim;
       case 'fair':
         return colors.status.warning;
       case 'poor':
@@ -110,26 +164,36 @@ export function LiveMeasurementCard({
     }
   };
 
-  const getQualityText = () => {
-    switch (quality) {
-      case 'excellent':
-        return 'Sangat Baik';
-      case 'good':
-        return 'Baik';
-      case 'fair':
-        return 'Cukup';
-      case 'poor':
-        return 'Kurang';
-      default:
-        return '—';
-    }
-  };
+  if (!childId) {
+    return (
+      <Pressable
+        style={styles.emptyCard}
+        onPress={async () => {
+          await HapticService.buttonPress();
+          onSelectChild?.();
+        }}
+      >
+        <Text style={styles.emptyTitle}>Pilih Anak</Text>
+        <Text style={styles.emptySubtitle}>
+          Pilih anak aktif untuk menampilkan pengukuran live & Z-score WHO.
+        </Text>
+      </Pressable>
+    );
+  }
+
+  if (showSkeleton || (isFetching && !latestDb && !hasLiveOrDb)) {
+    return (
+      <View style={styles.container}>
+        <SkeletonLoader variant="card" count={1} style={styles.skeletonPad} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.glowContainer, glowStyle]}>
         <LinearGradient
-          colors={['rgba(255, 25, 118, 0.35)', 'rgba(255, 25, 118, 0)']}
+          colors={['rgba(182, 0, 89, 0.35)', 'rgba(182, 0, 89, 0)']}
           style={styles.glow}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
@@ -138,7 +202,7 @@ export function LiveMeasurementCard({
 
       <BlurView intensity={50} tint="light" style={styles.blurCard}>
         <LinearGradient
-          colors={['rgba(255, 255, 255, 0.92)', 'rgba(255, 228, 243, 0.45)']}
+          colors={['rgba(255, 255, 255, 0.95)', colors.primary.fixed]}
           style={styles.gradient}
         >
           <View style={styles.header}>
@@ -158,51 +222,92 @@ export function LiveMeasurementCard({
             <View style={styles.headerText}>
               <Text style={styles.title}>Live Sensor</Text>
               <Text style={styles.subtitle}>
-                {isConnected ? 'Terhubung (MQTT)' : 'Tidak Terhubung'}
+                {isConnected ? 'MQTT · sync Supabase' : 'Tidak Terhubung'}
+                {isFetching ? ' · syncing…' : ''}
               </Text>
             </View>
-            <View style={[styles.qualityBadge, { backgroundColor: getQualityColor() }]}>
-              <Text style={styles.qualityText}>{getQualityText()}</Text>
-            </View>
-          </View>
-
-          <View style={styles.mainDisplay}>
-            <View style={styles.measurement}>
-              <Text style={styles.label}>Tinggi Badan</Text>
-              <View style={styles.valueContainer}>
-                <Text style={styles.value}>{displayHeight.toFixed(1)}</Text>
-                <Text style={styles.unit}>cm</Text>
-              </View>
-              <View style={styles.indicator}>
-                <View
-                  style={[
-                    styles.indicatorBar,
-                    { width: `${Math.min((height / 120) * 100, 100)}%` },
-                  ]}
-                />
-              </View>
-            </View>
-
-            {weight > 0 ? (
-              <View style={styles.measurement}>
-                <Text style={styles.label}>Berat Badan</Text>
-                <View style={styles.valueContainer}>
-                  <Text style={styles.value}>{weight.toFixed(1)}</Text>
-                  <Text style={styles.unit}>kg</Text>
-                </View>
+            {hasLiveOrDb ? (
+              <View style={[styles.qualityBadge, { backgroundColor: getQualityColor() }]}>
+                <Text style={styles.qualityText}>
+                  {quality === 'excellent'
+                    ? 'Sangat Baik'
+                    : quality === 'good'
+                      ? 'Baik'
+                      : quality === 'fair'
+                        ? 'Cukup'
+                        : 'Kurang'}
+                </Text>
               </View>
             ) : null}
           </View>
 
-          <View style={styles.footer}>
-            <Text style={styles.deviceText}>ESP32 · WebSocket MQTT</Text>
-            <Text style={styles.timestamp}>
-              {new Date().toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              })}
-            </Text>
+          {!hasLiveOrDb ? (
+            <View style={styles.waitingBox}>
+              <Text style={styles.waitingTitle}>Belum ada pengukuran</Text>
+              <Text style={styles.waitingHint}>
+                Hubungkan perangkat IoT atau lakukan ukur manual.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.mainDisplay}>
+              <View style={styles.measurement}>
+                <Text style={styles.label}>Tinggi Badan</Text>
+                <View style={styles.valueContainer}>
+                  <Text style={styles.value}>{displayHeight.toFixed(1)}</Text>
+                  <Text style={styles.unit}>cm</Text>
+                </View>
+              </View>
+
+              {displayWeight > 0 ? (
+                <View style={styles.measurement}>
+                  <Text style={styles.label}>Berat Badan</Text>
+                  <View style={styles.valueContainer}>
+                    <Text style={styles.value}>{displayWeight.toFixed(1)}</Text>
+                    <Text style={styles.unit}>kg</Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          )}
+
+          <View style={styles.zPanel}>
+            <Text style={styles.zTitle}>WHO Z-Score (tersimpan)</Text>
+            {!latestDb ? (
+              <Text style={styles.zEmpty}>Belum ada pengukuran</Text>
+            ) : isError ? (
+              <Text style={styles.zEmpty}>Gagal memuat data</Text>
+            ) : (
+              <View style={styles.zRow}>
+                <View style={styles.zItem}>
+                  <Text style={styles.zLabel}>TB/U</Text>
+                  <Text style={styles.zValue}>
+                    {latestDb.z_score_hfa != null
+                      ? latestDb.z_score_hfa.toFixed(2)
+                      : '—'}
+                  </Text>
+                </View>
+                <View style={styles.zItem}>
+                  <Text style={styles.zLabel}>BB/U</Text>
+                  <Text style={styles.zValue}>
+                    {latestDb.z_score_wfa != null
+                      ? latestDb.z_score_wfa.toFixed(2)
+                      : '—'}
+                  </Text>
+                </View>
+                <View style={styles.zItem}>
+                  <Text style={styles.zLabel}>Risiko</Text>
+                  <Text
+                    style={[
+                      styles.zValue,
+                      styles.zRisk,
+                      stunting ? { color: stunting.color } : null,
+                    ]}
+                  >
+                    {stunting?.label ?? '—'}
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
         </LinearGradient>
       </BlurView>
@@ -214,6 +319,44 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     marginBottom: spacing.md,
+  },
+  skeletonPad: {
+    padding: 0,
+  },
+  emptyCard: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderStyle: 'dashed',
+  },
+  emptyTitle: {
+    ...typography.styles.headlineLgMobile,
+    fontSize: 18,
+    color: colors.primary.main,
+    marginBottom: spacing.xs,
+  },
+  emptySubtitle: {
+    ...typography.styles.bodyMd,
+    fontSize: 14,
+    color: colors.text.secondary,
+  },
+  waitingBox: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+  },
+  waitingTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.onSurface,
+    marginBottom: spacing.xs,
+  },
+  waitingHint: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
   glowContainer: {
     position: 'absolute',
@@ -228,7 +371,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.xl,
   },
   blurCard: {
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border.glass,
@@ -245,9 +388,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginRight: spacing.sm,
   },
-  icon: {
-    fontSize: 32,
-  },
+  icon: { fontSize: 32 },
   statusDot: {
     position: 'absolute',
     top: 0,
@@ -258,13 +399,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.neutral.white,
   },
-  headerText: {
-    flex: 1,
-  },
+  headerText: { flex: 1 },
   title: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
+    ...typography.styles.headlineLgMobile,
+    fontSize: 18,
+    color: colors.text.onSurface,
   },
   subtitle: {
     fontSize: typography.fontSize.sm,
@@ -273,19 +412,15 @@ const styles = StyleSheet.create({
   qualityBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: borderRadius.xs,
+    borderRadius: borderRadius.full,
   },
   qualityText: {
     fontSize: typography.fontSize.xs,
     fontWeight: typography.fontWeight.semiBold,
     color: colors.text.inverse,
   },
-  mainDisplay: {
-    marginBottom: spacing.md,
-  },
-  measurement: {
-    marginBottom: spacing.md,
-  },
+  mainDisplay: { marginBottom: spacing.md },
+  measurement: { marginBottom: spacing.md },
   label: {
     fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.semiBold,
@@ -308,35 +443,41 @@ const styles = StyleSheet.create({
     color: colors.primary.main,
     marginLeft: spacing.sm,
   },
-  indicator: {
-    height: 6,
-    backgroundColor: colors.primary.lighter,
-    borderRadius: 3,
-    marginTop: spacing.sm,
-    overflow: 'hidden',
+  zPanel: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.divider,
   },
-  indicatorBar: {
-    height: '100%',
-    backgroundColor: colors.primary.main,
-    borderRadius: 3,
+  zTitle: {
+    ...typography.styles.labelCaps,
+    color: colors.text.onSurfaceVariant,
+    marginBottom: spacing.sm,
   },
-  footer: {
+  zEmpty: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+  },
+  zRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.divider,
   },
-  deviceText: {
+  zItem: { flex: 1, alignItems: 'center' },
+  zLabel: {
     fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semiBold,
     color: colors.text.secondary,
+    marginBottom: 4,
   },
-  timestamp: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.primary.main,
+  zValue: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.onSurface,
+  },
+  zRisk: {
+    fontSize: typography.fontSize.sm,
   },
 });
 

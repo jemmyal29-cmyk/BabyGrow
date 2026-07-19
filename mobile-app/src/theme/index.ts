@@ -1,5 +1,5 @@
 /**
- * BabyGrow Theme — Centralized Design System
+ * BabyGrow Theme — Design System (desainuiux.md)
  */
 
 import { colors } from './colors';

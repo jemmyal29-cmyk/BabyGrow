@@ -1,5 +1,5 @@
 /**
- * BabyGrow Input — Atomic Component
+ * Input — Atomic (desainuiux.md)
  */
 
 import React, { useState } from 'react';
@@ -78,13 +78,13 @@ export const Input: React.FC<InputProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.stackGap,
   },
   label: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.medium,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
+    ...typography.styles.labelCaps,
+    color: colors.text.onSurfaceVariant,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
   required: {
     color: colors.status.error,
@@ -92,11 +92,11 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.paper,
+    backgroundColor: colors.surface.lowest,
     borderWidth: 1,
-    borderColor: colors.border.input,
-    borderRadius: borderRadius.sm,
-    minHeight: 48,
+    borderColor: colors.outline.variant,
+    borderRadius: borderRadius.md,
+    minHeight: 56,
   },
   inputContainerFocused: {
     borderColor: colors.primary.main,
@@ -107,9 +107,9 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingHorizontal: spacing.md,
-    fontSize: typography.fontSize.md,
-    color: colors.text.primary,
+    paddingHorizontal: spacing.containerPadding,
+    ...typography.styles.bodyMd,
+    color: colors.text.onSurface,
   },
   inputWithLeftIcon: {
     paddingLeft: spacing.xs,

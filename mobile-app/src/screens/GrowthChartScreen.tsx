@@ -1,5 +1,5 @@
 /**
- * Growth Chart Screen — measurements from Supabase via React Query
+ * Growth Chart Screen — desainuiux.md + Supabase React Query
  */
 
 import React, { useMemo, useState } from 'react';
@@ -15,8 +15,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import { useChildMeasurements } from '../hooks/useChildrenQueries';
-import { Button } from '../components/common';
+import { useChildMeasurements } from '../hooks/useMeasurements';
+import { Button, Card, ScreenHeader } from '../components/common';
+import HapticService from '../services/HapticService';
 
 const { width } = Dimensions.get('window');
 
@@ -30,38 +31,33 @@ export default function GrowthChartScreen({ navigation, route }: any) {
 
   const chart = useMemo(() => {
     if (measurements.length === 0) {
-      return {
-        labels: ['—'],
-        datasets: [{ data: [0] }],
-      };
+      return { labels: ['—'], datasets: [{ data: [0] }] };
     }
-
     const slice = measurements.slice(-6);
     const labels = slice.map((m) => {
       const d = new Date(m.measured_at);
       return `${d.getDate()}/${d.getMonth() + 1}`;
     });
-
     const data = slice.map((m) => {
       if (metric === 'weight') return Number(m.weight_kg ?? 0);
       if (metric === 'zscore') return Number(m.z_score_hfa ?? 0);
       return Number(m.height_cm ?? 0);
     });
-
-    return {
-      labels,
-      datasets: [{ data: data.length ? data : [0] }],
-    };
+    return { labels, datasets: [{ data: data.length ? data : [0] }] };
   }, [measurements, metric]);
 
+  const selectMetric = async (key: Metric) => {
+    await HapticService.buttonPress();
+    setMetric(key);
+  };
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>← Kembali</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Grafik Pertumbuhan</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScreenHeader
+        title="Grafik Pertumbuhan"
+        subtitle="Data pengukuran Supabase"
+        onBack={() => navigation.goBack()}
+      />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.metricRow}>
@@ -75,13 +71,10 @@ export default function GrowthChartScreen({ navigation, route }: any) {
             <TouchableOpacity
               key={item.key}
               style={[styles.metricBtn, metric === item.key && styles.metricBtnActive]}
-              onPress={() => setMetric(item.key)}
+              onPress={() => selectMetric(item.key)}
             >
               <Text
-                style={[
-                  styles.metricText,
-                  metric === item.key && styles.metricTextActive,
-                ]}
+                style={[styles.metricText, metric === item.key && styles.metricTextActive]}
               >
                 {item.label}
               </Text>
@@ -90,12 +83,12 @@ export default function GrowthChartScreen({ navigation, route }: any) {
         </View>
 
         {!childId ? (
-          <View style={styles.empty}>
+          <Card>
             <Text style={styles.emptyTitle}>Pilih anak terlebih dahulu</Text>
             <Text style={styles.emptyDesc}>
               Buka tab Anak, lalu ketuk Grafik pada kartu anak.
             </Text>
-          </View>
+          </Card>
         ) : null}
 
         {childId && isLoading ? (
@@ -103,15 +96,15 @@ export default function GrowthChartScreen({ navigation, route }: any) {
         ) : null}
 
         {childId && isError ? (
-          <View style={styles.empty}>
+          <Card>
             <Text style={styles.emptyTitle}>Gagal memuat pengukuran</Text>
             <Text style={styles.emptyDesc}>{(error as Error)?.message}</Text>
             <Button title="Coba Lagi" onPress={() => refetch()} style={{ marginTop: spacing.md }} />
-          </View>
+          </Card>
         ) : null}
 
         {childId && !isLoading && !isError ? (
-          <View style={styles.chartCard}>
+          <Card padding="medium">
             {measurements.length === 0 ? (
               <Text style={styles.emptyDesc}>
                 Belum ada data pengukuran di Supabase untuk anak ini.
@@ -119,14 +112,14 @@ export default function GrowthChartScreen({ navigation, route }: any) {
             ) : (
               <LineChart
                 data={chart}
-                width={width - 48}
+                width={width - 64}
                 height={220}
                 chartConfig={{
-                  backgroundColor: colors.neutral.white,
-                  backgroundGradientFrom: colors.neutral.white,
-                  backgroundGradientTo: colors.primary.lighter,
+                  backgroundColor: colors.surface.lowest,
+                  backgroundGradientFrom: colors.surface.lowest,
+                  backgroundGradientTo: colors.primary.fixed,
                   decimalPlaces: 1,
-                  color: (opacity = 1) => `rgba(255, 25, 118, ${opacity})`,
+                  color: (opacity = 1) => `rgba(182, 0, 89, ${opacity})`,
                   labelColor: () => colors.text.secondary,
                   propsForDots: {
                     r: '5',
@@ -141,7 +134,7 @@ export default function GrowthChartScreen({ navigation, route }: any) {
             <Text style={styles.caption}>
               {measurements.length} pengukuran · sumber MQTT / manual
             </Text>
-          </View>
+          </Card>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -151,54 +144,37 @@ export default function GrowthChartScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.elevated,
-  },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  back: {
-    color: colors.primary.main,
-    fontWeight: typography.fontWeight.semiBold,
-    marginBottom: spacing.sm,
-  },
-  title: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
+    backgroundColor: colors.background.default,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.containerPadding,
+    paddingBottom: spacing.section,
+    gap: spacing.stackGap,
   },
   metricRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
+    gap: spacing.element,
   },
   metricBtn: {
     flex: 1,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.full,
     borderWidth: 1.5,
     borderColor: colors.primary.main,
     alignItems: 'center',
-    backgroundColor: colors.neutral.white,
+    backgroundColor: colors.surface.lowest,
   },
   metricBtnActive: {
     backgroundColor: colors.primary.main,
+    ...shadows.primaryGlow,
   },
   metricText: {
+    ...typography.styles.buttonText,
     color: colors.primary.main,
-    fontWeight: typography.fontWeight.semiBold,
+    fontSize: 14,
   },
   metricTextActive: {
-    color: colors.text.inverse,
-  },
-  chartCard: {
-    backgroundColor: colors.neutral.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.card,
+    color: colors.primary.onPrimary,
   },
   chart: {
     borderRadius: borderRadius.md,
@@ -209,23 +185,15 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
   },
-  empty: {
-    backgroundColor: colors.neutral.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    ...shadows.soft,
-  },
   emptyTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
+    textAlign: 'center',
     marginBottom: spacing.sm,
   },
   emptyDesc: {
-    fontSize: typography.fontSize.sm,
+    ...typography.styles.bodyMd,
     color: colors.text.secondary,
     textAlign: 'center',
-    lineHeight: 20,
   },
 });

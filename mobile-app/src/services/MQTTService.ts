@@ -1,6 +1,11 @@
 /**
  * MQTT Service — Singleton (Paho MQTT over WebSockets)
  * Broker default: EMQX public WSS
+ *
+ * Persistence contract:
+ * - This service ONLY normalizes + emits `measurement` events.
+ * - Never insert to Supabase here.
+ * - `MeasurementSyncService` owns Z-score (who_standards) + offline queue + insert.
  */
 
 import { Client, Message } from 'paho-mqtt';
@@ -114,6 +119,7 @@ class MQTTService {
       if (!measurement) return;
 
       this.latestMeasurement = measurement;
+      // Downstream: MeasurementSyncService.subscribeMeasurements → syncToSupabase
       this.emit('measurement', measurement);
       console.log('[MQTT] measurement', measurement.height_cm, 'cm');
     } catch (error) {

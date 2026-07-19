@@ -1,5 +1,5 @@
 /**
- * Children Screen — Supabase via React Query
+ * Children Screen — desainuiux.md + Supabase React Query
  */
 
 import React from 'react';
@@ -8,26 +8,20 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import { useAuth } from '../store/authStore';
-import { useIsAdmin } from '../store/authStore';
-import { ageLabelFromDob, useChildren } from '../hooks/useChildrenQueries';
-import { Button } from '../components/common';
+import { colors, typography, spacing } from '../theme';
+import { useAuth, useIsAdmin } from '../store/authStore';
+import { ageLabelFromDob, useChildren } from '../hooks/useChildren';
+import { Button, Card, ScreenHeader } from '../components/common';
 
 export default function ChildrenScreen({ navigation }: any) {
   const { user } = useAuth();
   const isAdmin = useIsAdmin();
   const { data: children = [], isLoading, isError, error, refetch, isRefetching } =
-    useChildren(
-      isAdmin
-        ? { fetchAll: true }
-        : { parentId: user?.id }
-    );
+    useChildren(isAdmin ? { fetchAll: true } : { parentId: user?.id });
 
   const list = children;
 
@@ -35,19 +29,25 @@ export default function ChildrenScreen({ navigation }: any) {
     navigation.getParent()?.navigate('AddChild');
   };
 
-  const handleChildPress = (child: (typeof list)[number]) => {
-    navigation.getParent()?.navigate('ChildDetail', { child });
-  };
-
-  const handleGrowthChart = (childId: string) => {
-    navigation.getParent()?.navigate('GrowthChart', { childId });
-  };
-
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScreenHeader
+        title={isAdmin ? 'Data Balita' : 'Profil Anak'}
+        subtitle="Data tersinkron ke Supabase"
+        rightAction={
+          <Button
+            title="+ Tambah"
+            onPress={handleAddChild}
+            size="small"
+            fullWidth={false}
+            style={styles.addBtn}
+          />
+        }
+      />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -56,42 +56,34 @@ export default function ChildrenScreen({ navigation }: any) {
           />
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>{isAdmin ? 'Data Balita' : 'Profil Anak'}</Text>
-          <TouchableOpacity style={styles.addButton} onPress={handleAddChild}>
-            <Text style={styles.addButtonText}>+ Tambah</Text>
-          </TouchableOpacity>
-        </View>
-
         {isLoading ? (
           <ActivityIndicator color={colors.primary.main} style={{ marginTop: spacing.xl }} />
         ) : null}
 
         {isError ? (
-          <View style={styles.emptyCard}>
+          <Card>
             <Text style={styles.emptyTitle}>Gagal memuat data</Text>
             <Text style={styles.emptyDesc}>{(error as Error)?.message}</Text>
             <Button title="Coba Lagi" onPress={() => refetch()} style={{ marginTop: spacing.md }} />
-          </View>
+          </Card>
         ) : null}
 
         {!isLoading && !isError && list.length === 0 ? (
-          <View style={styles.emptyCard}>
+          <Card>
             <Text style={styles.emptyEmoji}>👶</Text>
             <Text style={styles.emptyTitle}>Belum ada data anak</Text>
             <Text style={styles.emptyDesc}>
-              Tambahkan profil anak untuk mulai menyimpan pengukuran ke Supabase.
+              Tambahkan profil anak untuk mulai menyimpan pengukuran.
             </Text>
             <Button title="Tambah Anak" onPress={handleAddChild} style={{ marginTop: spacing.md }} />
-          </View>
+          </Card>
         ) : null}
 
         {list.map((child) => (
-          <TouchableOpacity
+          <Card
             key={child.id}
+            onPress={() => navigation.getParent()?.navigate('ChildDetail', { child })}
             style={styles.card}
-            onPress={() => handleChildPress(child)}
-            activeOpacity={0.85}
           >
             <View style={styles.cardHeader}>
               <Text style={styles.emoji}>{child.gender === 'female' ? '👧' : '👦'}</Text>
@@ -104,22 +96,27 @@ export default function ChildrenScreen({ navigation }: any) {
               </View>
             </View>
             <View style={styles.actions}>
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={() => handleGrowthChart(child.id)}
-              >
-                <Text style={styles.actionText}>Grafik</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, styles.actionPrimary]}
+              <Button
+                title="Grafik"
+                variant="secondary"
+                size="medium"
+                fullWidth
+                onPress={() =>
+                  navigation.getParent()?.navigate('GrowthChart', { childId: child.id })
+                }
+                style={styles.actionFlex}
+              />
+              <Button
+                title="Ukur"
+                size="medium"
+                fullWidth
                 onPress={() =>
                   navigation.getParent()?.navigate('ManualMeasurement', { childId: child.id })
                 }
-              >
-                <Text style={[styles.actionText, styles.actionPrimaryText]}>Ukur</Text>
-              </TouchableOpacity>
+                style={styles.actionFlex}
+              />
             </View>
-          </TouchableOpacity>
+          </Card>
         ))}
       </ScrollView>
     </SafeAreaView>
@@ -129,41 +126,19 @@ export default function ChildrenScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.elevated,
+    backgroundColor: colors.background.default,
   },
-  scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl,
+  scroll: {
+    paddingHorizontal: spacing.containerPadding,
+    paddingBottom: spacing.section,
+    gap: spacing.stackGap,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  title: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
-  },
-  addButton: {
-    backgroundColor: colors.primary.main,
+  addBtn: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.sm,
-    ...shadows.pink,
-  },
-  addButtonText: {
-    color: colors.text.inverse,
-    fontWeight: typography.fontWeight.semiBold,
-    fontSize: typography.fontSize.sm,
+    minHeight: 36,
   },
   card: {
-    backgroundColor: colors.background.paper,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    ...shadows.card,
+    marginBottom: spacing.stackGap,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -174,62 +149,37 @@ const styles = StyleSheet.create({
     fontSize: 40,
     marginRight: spacing.md,
   },
-  cardInfo: {
-    flex: 1,
-  },
+  cardInfo: { flex: 1 },
   name: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
   },
   meta: {
-    fontSize: typography.fontSize.sm,
+    ...typography.styles.bodyMd,
     color: colors.text.secondary,
     marginTop: 2,
   },
   actions: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.element,
   },
-  actionBtn: {
+  actionFlex: {
     flex: 1,
-    borderWidth: 1.5,
-    borderColor: colors.primary.main,
-    borderRadius: borderRadius.sm,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
-  actionPrimary: {
-    backgroundColor: colors.primary.main,
-  },
-  actionText: {
-    color: colors.primary.main,
-    fontWeight: typography.fontWeight.semiBold,
-  },
-  actionPrimaryText: {
-    color: colors.text.inverse,
-  },
-  emptyCard: {
-    backgroundColor: colors.background.paper,
-    borderRadius: borderRadius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    ...shadows.soft,
   },
   emptyEmoji: {
     fontSize: 48,
+    textAlign: 'center',
     marginBottom: spacing.md,
   },
   emptyTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.primary,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
+    textAlign: 'center',
     marginBottom: spacing.sm,
   },
   emptyDesc: {
-    fontSize: typography.fontSize.sm,
+    ...typography.styles.bodyMd,
     color: colors.text.secondary,
     textAlign: 'center',
-    lineHeight: 20,
   },
 });

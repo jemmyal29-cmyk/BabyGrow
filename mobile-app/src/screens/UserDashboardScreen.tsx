@@ -1,6 +1,5 @@
 /**
- * User Dashboard Screen (Caregiver Hub)
- * 3D Glassmorphism Design with Pink Soft Theme + Live IoT Integration
+ * User Dashboard — real data from useChildren + useLatestMeasurement + MQTT sync
  */
 
 import React from 'react';
@@ -9,16 +8,20 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  Dimensions,
   Pressable,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useAuth } from '../store/authStore';
-import { SkeletonLoader, PairingModal } from '../components/common';
+import {
+  SkeletonLoader,
+  PairingModal,
+  ScreenHeader,
+  SyncStatusIndicator,
+} from '../components/common';
 import { LiveMeasurementCard } from '../components/common/LiveMeasurementCard';
 import { HardwareHealthWidget } from '../components/common/HardwareHealthWidget';
 import MBGQuestionnaireModal from '../components/common/MBGQuestionnaireModal';
@@ -26,35 +29,94 @@ import HapticService from '../services/HapticService';
 import MQTTService from '../services/MQTTService';
 import MeasurementSyncService from '../services/MeasurementSyncService';
 import type { MQTTMeasurement } from '../types';
-import { useChildren } from '../hooks/useChildrenQueries';
+import { ageLabelFromDob, useChildren } from '../hooks/useChildren';
+import {
+  getStuntingDisplay,
+  useLatestMeasurement,
+} from '../hooks/useMeasurements';
+import { calculateAgeInMonths } from '../utils/zScoreCalculator';
+import { colors, spacing, typography, borderRadius } from '../theme';
+import { useChildStore } from '../store/childStore';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = width - 48;
+const BG_GRADIENT = colors.secondary.gradient.softBg;
+
+function formatMeasuredAt(iso?: string | null): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+/** Map z-score (-3…+3) → bar position 0–100% */
+function zScoreBarPercent(z: number | null | undefined): number {
+  if (z == null || Number.isNaN(z)) return 50;
+  const clamped = Math.max(-3, Math.min(3, z));
+  return ((clamped + 3) / 6) * 100;
+}
 
 export default function UserDashboardScreen({ navigation }: any) {
   const { user } = useAuth();
-  const { data: children = [] } = useChildren({ parentId: user?.id });
+  const {
+    data: children = [],
+    isPending: childrenLoading,
+    isError: childrenError,
+  } = useChildren({ parentId: user?.id });
+
+  const setActiveChild = useChildStore((s) => s.setActiveChild);
+  const activeChildId = useChildStore((s) => s.activeChildId);
+  const activeChild = useChildStore((s) => s.activeChild);
+
+  const {
+    data: latest,
+    isPending: latestLoading,
+  } = useLatestMeasurement(activeChildId);
+
   const [pairingModalVisible, setPairingModalVisible] = React.useState(false);
   const [mbgModalVisible, setMbgModalVisible] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
   const [mqttConnected, setMqttConnected] = React.useState(false);
   const [isPaired, setIsPaired] = React.useState(false);
   const isPairedRef = React.useRef(false);
-  const [liveHeight, setLiveHeight] = React.useState(0);
-  const [liveWeight, setLiveWeight] = React.useState(0);
-  const [quality, setQuality] = React.useState<'excellent' | 'good' | 'fair' | 'poor'>('good');
   const [batteryLevel, setBatteryLevel] = React.useState(0);
   const [signalStrength, setSignalStrength] = React.useState(0);
-  const [activeChildId, setActiveChildId] = React.useState<string | null>(null);
 
   const mqttService = React.useMemo(() => MQTTService.getInstance(), []);
-  const syncService = React.useMemo(() => MeasurementSyncService.getInstance(), []);
+  const syncService = React.useMemo(
+    () => MeasurementSyncService.getInstance(),
+    []
+  );
 
+  // Keep Zustand activeChild in sync with children list (race-safe)
   React.useEffect(() => {
-    if (children[0]?.id) {
-      setActiveChildId(children[0].id);
+    if (children.length === 0) {
+      if (activeChildId) setActiveChild(null);
+      return;
     }
-  }, [children]);
+    const preferred = activeChildId
+      ? children.find((c) => c.id === activeChildId)
+      : undefined;
+    const next = preferred ?? children[0];
+    if (
+      activeChild?.id === next.id &&
+      activeChild.gender === next.gender &&
+      activeChild.date_of_birth === next.date_of_birth &&
+      activeChild.name === next.name
+    ) {
+      return;
+    }
+    setActiveChild({
+      id: next.id,
+      name: next.name,
+      gender: next.gender,
+      date_of_birth: next.date_of_birth,
+    });
+  }, [children, activeChildId, activeChild, setActiveChild]);
 
   React.useEffect(() => {
     isPairedRef.current = isPaired;
@@ -69,9 +131,6 @@ export default function UserDashboardScreen({ navigation }: any) {
     const onMeasurement = (raw: unknown) => {
       if (!isPairedRef.current) return;
       const data = raw as MQTTMeasurement;
-      setLiveHeight(data.height_cm);
-      setLiveWeight(data.weight_kg || 0);
-      setQuality(data.quality);
       setBatteryLevel(data.batteryLevel || 0);
       setSignalStrength(data.signalStrength || 0);
       HapticService.light();
@@ -86,7 +145,7 @@ export default function UserDashboardScreen({ navigation }: any) {
       try {
         await mqttService.connect();
       } catch (error) {
-        console.warn('MQTT broker unreachable — enabling simulated mode', error);
+        console.warn('MQTT broker unreachable — simulated mode', error);
         mqttService.markSimulatedConnected();
       }
     })();
@@ -102,17 +161,25 @@ export default function UserDashboardScreen({ navigation }: any) {
     };
   }, [mqttService, syncService]);
 
-  React.useEffect(() => {
-    syncService.setActiveChild(activeChildId);
-  }, [activeChildId, syncService]);
+  const stunting = React.useMemo(
+    () =>
+      getStuntingDisplay({
+        stunting_risk: latest?.stunting_risk,
+        z_score_hfa: latest?.z_score_hfa,
+        z_score_wfa: latest?.z_score_wfa,
+      }),
+    [latest]
+  );
 
-  // Simulate data loading
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1500);
-    return () => clearTimeout(timer);
-  }, []);
+  const ageMonths = activeChild
+    ? calculateAgeInMonths(activeChild.date_of_birth)
+    : 18;
 
-  // Navigation handlers
+  const handleSelectChild = async () => {
+    await HapticService.buttonPress();
+    navigation.navigate('Children');
+  };
+
   const handleManualMeasure = async () => {
     await HapticService.buttonPress();
     navigation.navigate('ManualMeasurement');
@@ -140,149 +207,172 @@ export default function UserDashboardScreen({ navigation }: any) {
 
   const handleRetryConnect = async () => {
     await HapticService.buttonPress();
-    Alert.alert(
-      'Reconnect IoT',
-      'Mencoba menghubungkan kembali ke perangkat IoT...',
-      [{ text: 'OK' }]
-    );
     try {
       await mqttService.connect();
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Gagal menghubungkan ke perangkat IoT');
     }
   };
 
-  // Mock child data
-  const mockChild = {
-    id: 'child_001',
-    name: 'Zaki Pratama',
-    age: '18 bulan',
-    gender: 'Laki-laki',
-    lastMeasurement: {
-      weight: 10.2,
-      height: 78.5,
-      date: '21 Des 2025',
-    },
-    status: 'at_risk',
-    statusText: 'Perlu Perhatian',
-    zScore: -2.1,
-  };
+  const profileLoading = childrenLoading || (!!activeChildId && latestLoading);
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#FFB6C1', '#FFF0F5', '#FFFFFF']}
-        style={styles.gradient}
-      >
-        {/* Hardware Health Widget - Top Right */}
-        <HardwareHealthWidget
-          isConnected={mqttConnected}
-          batteryLevel={batteryLevel}
-          signalStrength={signalStrength}
-          onRetryConnect={handleRetryConnect}
-        />
-
+      <LinearGradient colors={BG_GRADIENT} style={styles.gradient}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
-          <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
-            <View>
-              <Text style={styles.greeting}>Halo, {user?.name || 'Ibu'} 👋</Text>
-              <Text style={styles.tagline}>Kawal Tumbuh Kembang Sejak Dini</Text>
-            </View>
-            <TouchableOpacity style={styles.avatarButton}>
-              <Text style={styles.avatar}>{user?.avatar || '👩'}</Text>
-            </TouchableOpacity>
+          <Animated.View entering={FadeInDown.duration(600)}>
+            <ScreenHeader
+              brand
+              title="BabyGrow"
+              subtitle={`Halo, ${user?.name || 'Ibu'}`}
+              rightAction={<SyncStatusIndicator />}
+            />
           </Animated.View>
 
-          {/* Live Measurement Card - IoT Data */}
-          {mqttConnected && liveHeight > 0 && (
-            <Animated.View entering={FadeInUp.delay(100).duration(600)}>
-              <LiveMeasurementCard
-                height={liveHeight}
-                weight={liveWeight}
-                quality={quality}
-                isConnected={mqttConnected}
-                bindMqtt={false}
-              />
-            </Animated.View>
-          )}
+          <Animated.View entering={FadeInUp.delay(80).duration(500)}>
+            <LiveMeasurementCard
+              childId={activeChildId}
+              bindMqtt
+              isConnected={mqttConnected}
+              onSelectChild={handleSelectChild}
+            />
+          </Animated.View>
 
-          {/* 3D Child Profile Card */}
-          {isLoading ? (
-            <View style={{ marginVertical: 16 }}>
-              <SkeletonLoader variant="card" count={1} />
+          {childrenError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>Gagal memuat data anak</Text>
             </View>
-          ) : (
-            <Animated.View entering={FadeInUp.delay(200).duration(600)}>
+          ) : null}
+
+          {!childrenLoading && children.length === 0 ? (
+            <Pressable style={styles.emptyChild} onPress={handleSelectChild}>
+              <Text style={styles.emptyChildTitle}>Belum ada anak</Text>
+              <Text style={styles.emptyChildHint}>
+                Tambahkan profil anak untuk mulai monitoring pertumbuhan.
+              </Text>
+            </Pressable>
+          ) : profileLoading ? (
+            <View style={{ marginVertical: spacing.sm }}>
+              <SkeletonLoader variant="card" count={1} style={{ padding: 0 }} />
+            </View>
+          ) : activeChild ? (
+            <Animated.View entering={FadeInUp.delay(160).duration(500)}>
               <BlurView intensity={20} tint="light" style={styles.glassCard}>
-              <View style={styles.cardShadow}>
-                <LinearGradient
-                  colors={['rgba(255, 105, 180, 0.15)', 'rgba(255, 182, 193, 0.1)']}
-                  style={styles.cardGradient}
-                >
-                  <View style={styles.childHeader}>
-                    <View style={styles.childAvatar}>
-                      <Text style={styles.childAvatarEmoji}>👶</Text>
+                <View style={styles.cardShadow}>
+                  <LinearGradient
+                    colors={[
+                      'rgba(182, 0, 89, 0.12)',
+                      'rgba(255, 217, 225, 0.35)',
+                    ]}
+                    style={styles.cardGradient}
+                  >
+                    <View style={styles.childHeader}>
+                      <View style={styles.childAvatar}>
+                        <Text style={styles.childAvatarEmoji}>
+                          {activeChild.gender === 'female' ? '👧' : '👦'}
+                        </Text>
+                      </View>
+                      <View style={styles.childInfo}>
+                        <Text style={styles.childName}>{activeChild.name}</Text>
+                        <Text style={styles.childDetails}>
+                          {activeChild.gender === 'female'
+                            ? 'Perempuan'
+                            : 'Laki-laki'}{' '}
+                          · {ageLabelFromDob(activeChild.date_of_birth)}
+                        </Text>
+                        {latest?.measured_at ? (
+                          <Text style={styles.measuredHint}>
+                            Terakhir diukur {formatMeasuredAt(latest.measured_at)}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Pressable
+                        style={styles.moreButton}
+                        onPress={handleSelectChild}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.moreIcon}>⇄</Text>
+                      </Pressable>
                     </View>
-                    <View style={styles.childInfo}>
-                      <Text style={styles.childName}>{mockChild.name}</Text>
-                      <Text style={styles.childDetails}>
-                        {mockChild.gender} • {mockChild.age}
-                      </Text>
-                    </View>
-                    <TouchableOpacity style={styles.moreButton}>
-                      <Text style={styles.moreIcon}>⋮</Text>
-                    </TouchableOpacity>
-                  </View>
 
-                  <View style={styles.divider} />
+                    <View style={styles.divider} />
 
-                  <View style={styles.measurementRow}>
-                    <View style={styles.measurementItem}>
-                      <Text style={styles.measurementLabel}>Berat</Text>
-                      <Text style={styles.measurementValue}>
-                        {mockChild.lastMeasurement.weight} kg
-                      </Text>
-                    </View>
-                    <View style={styles.measurementItem}>
-                      <Text style={styles.measurementLabel}>Tinggi</Text>
-                      <Text style={styles.measurementValue}>
-                        {mockChild.lastMeasurement.height} cm
-                      </Text>
-                    </View>
-                    <View style={styles.measurementItem}>
-                      <Text style={styles.measurementLabel}>Z-Score</Text>
-                      <Text style={[styles.measurementValue, { color: '#FF9800' }]}>
-                        {mockChild.zScore}
-                      </Text>
-                    </View>
-                  </View>
+                    {!latest ? (
+                      <Text style={styles.noMeasure}>Belum ada pengukuran</Text>
+                    ) : (
+                      <View style={styles.measurementRow}>
+                        <View style={styles.measurementItem}>
+                          <Text style={styles.measurementLabel}>Berat</Text>
+                          <Text style={styles.measurementValue}>
+                            {latest.weight_kg != null
+                              ? `${Number(latest.weight_kg).toFixed(1)} kg`
+                              : '—'}
+                          </Text>
+                        </View>
+                        <View style={styles.measurementItem}>
+                          <Text style={styles.measurementLabel}>Tinggi</Text>
+                          <Text style={styles.measurementValue}>
+                            {Number(latest.height_cm).toFixed(1)} cm
+                          </Text>
+                        </View>
+                        <View style={styles.measurementItem}>
+                          <Text style={styles.measurementLabel}>Z-Score</Text>
+                          <Text
+                            style={[
+                              styles.measurementValue,
+                              {
+                                color:
+                                  stunting?.color ?? colors.text.onSurface,
+                              },
+                            ]}
+                          >
+                            {latest.z_score_hfa != null
+                              ? Number(latest.z_score_hfa).toFixed(2)
+                              : '—'}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
-                  <View style={styles.statusBadge}>
-                    <Text style={styles.statusIcon}>⚠️</Text>
-                    <Text style={styles.statusText}>{mockChild.statusText}</Text>
-                  </View>
-                </LinearGradient>
-              </View>
-            </BlurView>
-          </Animated.View>
-          )}
+                    {stunting ? (
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          { backgroundColor: `${stunting.color}18` },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.statusDot,
+                            { backgroundColor: stunting.color },
+                          ]}
+                        />
+                        <Text
+                          style={[styles.statusText, { color: stunting.color }]}
+                        >
+                          {stunting.label}
+                        </Text>
+                      </View>
+                    ) : latest ? null : null}
+                  </LinearGradient>
+                </View>
+              </BlurView>
+            </Animated.View>
+          ) : null}
 
-          {/* Quick Actions */}
           <Animated.View
-            entering={FadeInUp.delay(400).duration(600)}
+            entering={FadeInUp.delay(280).duration(500)}
             style={styles.actionsContainer}
           >
             <Text style={styles.sectionTitle}>Aksi Cepat</Text>
             <View style={styles.actionsGrid}>
-              {/* NEW: Ukur Otomatis Button */}
-              <Pressable 
-                style={[styles.actionCard, styles.actionCardPrimary]} 
-                onPress={() => {
-                  HapticService.light();
+              <Pressable
+                style={[styles.actionCard, styles.actionCardPrimary]}
+                onPress={async () => {
+                  await HapticService.light();
                   setPairingModalVisible(true);
                 }}
               >
@@ -290,9 +380,6 @@ export default function UserDashboardScreen({ navigation }: any) {
                   <Text style={styles.actionEmoji}>📡</Text>
                 </View>
                 <Text style={styles.actionLabel}>Ukur Otomatis</Text>
-                <View style={styles.newBadge}>
-                  <Text style={styles.newBadgeText}>NEW</Text>
-                </View>
               </Pressable>
 
               <Pressable style={styles.actionCard} onPress={handleManualMeasure}>
@@ -316,18 +403,14 @@ export default function UserDashboardScreen({ navigation }: any) {
                 <Text style={styles.actionLabel}>Resep MBG</Text>
               </Pressable>
 
-              {/* 🆕 NEW: AI MBG Menu Generator */}
-              <Pressable 
-                style={[styles.actionCard, styles.actionCardPrimary]} 
+              <Pressable
+                style={[styles.actionCard, styles.actionCardPrimary]}
                 onPress={handleMBGQuestionnaire}
               >
                 <View style={styles.actionIcon}>
                   <Text style={styles.actionEmoji}>🤖</Text>
                 </View>
                 <Text style={styles.actionLabel}>AI Menu</Text>
-                <View style={styles.newBadge}>
-                  <Text style={styles.newBadgeText}>NEW</Text>
-                </View>
               </Pressable>
 
               <Pressable style={styles.actionCard} onPress={handleAIChat}>
@@ -339,47 +422,67 @@ export default function UserDashboardScreen({ navigation }: any) {
             </View>
           </Animated.View>
 
-          {/* Z-Score Widget */}
-          <Animated.View entering={FadeInUp.delay(600).duration(600)}>
+          <Animated.View entering={FadeInUp.delay(400).duration(500)}>
             <BlurView intensity={15} tint="light" style={styles.zScoreWidget}>
               <Text style={styles.widgetTitle}>Cek Stunting Otomatis</Text>
               <Text style={styles.widgetSubtitle}>
-                Berdasarkan standar WHO, anak Anda:
+                Berdasarkan standar WHO (TB/U):
               </Text>
-              <View style={styles.zScoreBar}>
-                <View style={[styles.zScoreIndicator, { left: '35%' }]} />
-                <View style={styles.zScoreLabels}>
-                  <Text style={styles.zScoreLabel}>-3</Text>
-                  <Text style={styles.zScoreLabel}>-2</Text>
-                  <Text style={styles.zScoreLabel}>0</Text>
-                  <Text style={styles.zScoreLabel}>+2</Text>
-                </View>
-              </View>
-              <Text style={styles.zScoreResult}>
-                Berisiko Stunting - Konsultasi Segera
-              </Text>
+              {!latest || latest.z_score_hfa == null ? (
+                <Text style={styles.zScoreResultMuted}>
+                  Belum ada pengukuran
+                </Text>
+              ) : (
+                <>
+                  <View style={styles.zScoreBar}>
+                    <View
+                      style={[
+                        styles.zScoreIndicator,
+                        {
+                          left: `${zScoreBarPercent(latest.z_score_hfa)}%`,
+                          backgroundColor:
+                            stunting?.color ?? colors.status.warning,
+                        },
+                      ]}
+                    />
+                    <View style={styles.zScoreLabels}>
+                      <Text style={styles.zScoreLabel}>-3</Text>
+                      <Text style={styles.zScoreLabel}>-2</Text>
+                      <Text style={styles.zScoreLabel}>0</Text>
+                      <Text style={styles.zScoreLabel}>+2</Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={[
+                      styles.zScoreResult,
+                      { color: stunting?.color ?? colors.text.onSurface },
+                    ]}
+                  >
+                    {stunting
+                      ? `${stunting.label} (z = ${Number(latest.z_score_hfa).toFixed(2)})`
+                      : `Z-Score ${Number(latest.z_score_hfa).toFixed(2)}`}
+                  </Text>
+                </>
+              )}
             </BlurView>
           </Animated.View>
         </ScrollView>
 
-        {/* Pairing Modal */}
         <PairingModal
           visible={pairingModalVisible}
           onClose={() => setPairingModalVisible(false)}
           onSuccess={(deviceInfo) => {
-            console.log('Device paired:', deviceInfo);
             setIsPaired(true);
             setBatteryLevel(deviceInfo.batteryLevel || 0);
             setSignalStrength(deviceInfo.signalStrength || 0);
             Alert.alert(
-              'Berhasil!', 
-              `Terhubung ke ${deviceInfo.name || deviceInfo.deviceId}\n\nSekarang Anda bisa melakukan pengukuran otomatis.`,
+              'Berhasil!',
+              `Terhubung ke ${deviceInfo.name || deviceInfo.deviceId}`,
               [{ text: 'OK', onPress: () => HapticService.success() }]
             );
           }}
         />
 
-        {/* Hardware Health Widget - Floating */}
         <HardwareHealthWidget
           isConnected={mqttConnected}
           batteryLevel={batteryLevel}
@@ -387,13 +490,16 @@ export default function UserDashboardScreen({ navigation }: any) {
           onRetryConnect={handleRetryConnect}
         />
 
-        {/* MBG Questionnaire Modal */}
         <MBGQuestionnaireModal
           visible={mbgModalVisible}
           onClose={() => setMbgModalVisible(false)}
-          childAge={18}
-          childWeight={mockChild.lastMeasurement.weight}
-          childHeight={mockChild.lastMeasurement.height}
+          childAge={ageMonths}
+          childWeight={
+            latest?.weight_kg != null ? Number(latest.weight_kg) : undefined
+          }
+          childHeight={
+            latest?.height_cm != null ? Number(latest.height_cm) : undefined
+          }
         />
       </LinearGradient>
     </View>
@@ -403,75 +509,78 @@ export default function UserDashboardScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF0F5',
+    backgroundColor: colors.background.default,
   },
   gradient: {
     flex: 1,
   },
   scrollContent: {
-    padding: 24,
-    paddingTop: 60,
+    padding: spacing.containerPadding,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 32,
+  errorBox: {
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: colors.status.errorContainer,
+    borderRadius: borderRadius.md,
   },
-  greeting: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FF69B4',
-    marginBottom: 4,
+  errorText: {
+    color: colors.status.error,
+    fontWeight: typography.fontWeight.semibold,
   },
-  tagline: {
-    fontSize: 14,
-    color: '#666',
+  emptyChild: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderStyle: 'dashed',
   },
-  avatarButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 105, 180, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FF69B4',
+  emptyChildTitle: {
+    ...typography.styles.headlineLgMobile,
+    fontSize: 18,
+    color: colors.primary.main,
+    marginBottom: spacing.xs,
   },
-  avatar: {
-    fontSize: 28,
+  emptyChildHint: {
+    color: colors.text.secondary,
+    fontSize: typography.fontSize.sm,
   },
   glassCard: {
-    borderRadius: 24,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
   cardShadow: {
-    shadowColor: '#FF69B4',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 8,
+    ...{
+      shadowColor: colors.primary.main,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.2,
+      shadowRadius: 16,
+      elevation: 6,
+    },
   },
   cardGradient: {
-    padding: 20,
-    borderRadius: 24,
+    padding: spacing.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: colors.border.glass,
   },
   childHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   childAvatar: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary.main,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: spacing.sm,
   },
   childAvatarEmoji: {
     fontSize: 32,
@@ -481,70 +590,81 @@ const styles = StyleSheet.create({
   },
   childName: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 4,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.onSurface,
+    marginBottom: 2,
   },
   childDetails: {
     fontSize: 14,
-    color: '#666',
+    color: colors.text.secondary,
+  },
+  measuredHint: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
   moreButton: {
-    padding: 8,
+    padding: spacing.sm,
   },
   moreIcon: {
-    fontSize: 24,
-    color: '#666',
+    fontSize: 20,
+    color: colors.primary.main,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255, 105, 180, 0.2)',
-    marginVertical: 16,
+    backgroundColor: colors.border.divider,
+    marginVertical: spacing.md,
+  },
+  noMeasure: {
+    textAlign: 'center',
+    color: colors.text.secondary,
+    paddingVertical: spacing.md,
+    fontSize: typography.fontSize.sm,
   },
   measurementRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   measurementItem: {
     alignItems: 'center',
   },
   measurementLabel: {
     fontSize: 12,
-    color: '#666',
+    color: colors.text.secondary,
     marginBottom: 4,
   },
   measurementValue: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.onSurface,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 152, 0, 0.1)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
     alignSelf: 'flex-start',
+    gap: spacing.sm,
   },
-  statusIcon: {
-    fontSize: 16,
-    marginRight: 8,
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FF9800',
+    fontWeight: typography.fontWeight.semibold,
   },
   actionsContainer: {
-    marginBottom: 24,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 16,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.onSurface,
+    marginBottom: spacing.md,
   },
   actionsGrid: {
     flexDirection: 'row',
@@ -552,113 +672,94 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   actionCard: {
-    width: (width - 72) / 2,
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    width: (width - spacing.containerPadding * 2 - spacing.md) / 2,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: colors.neutral.black,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+  },
+  actionCardPrimary: {
+    borderWidth: 2,
+    borderColor: colors.primary.main,
+    backgroundColor: colors.primary.fixed,
   },
   actionIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FFF0F5',
+    backgroundColor: colors.primary.fixed,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
   },
   actionEmoji: {
     fontSize: 28,
   },
   actionLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.text.onSurface,
     textAlign: 'center',
   },
   zScoreWidget: {
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
     overflow: 'hidden',
+    marginBottom: spacing.xl,
   },
   widgetTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.onSurface,
+    marginBottom: spacing.xs,
   },
   widgetSubtitle: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
+    color: colors.text.secondary,
+    marginBottom: spacing.lg,
   },
   zScoreBar: {
     height: 40,
-    backgroundColor: 'rgba(255, 105, 180, 0.1)',
-    borderRadius: 20,
-    marginBottom: 16,
+    backgroundColor: colors.effects.glassPink,
+    borderRadius: borderRadius.full,
+    marginBottom: spacing.md,
     position: 'relative',
+    overflow: 'hidden',
   },
   zScoreIndicator: {
     position: 'absolute',
-    top: '50%',
-    marginTop: -20,
+    top: 0,
+    marginLeft: -2,
     width: 4,
     height: 40,
-    backgroundColor: '#FF9800',
     borderRadius: 2,
   },
   zScoreLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     paddingTop: 10,
   },
   zScoreLabel: {
     fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
+    color: colors.text.secondary,
+    fontWeight: typography.fontWeight.semibold,
   },
   zScoreResult: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FF9800',
+    fontWeight: typography.fontWeight.semibold,
     textAlign: 'center',
   },
-  actionCardPrimary: {
-    borderWidth: 3,
-    borderColor: '#FF69B4',
-    backgroundColor: 'rgba(255, 105, 180, 0.1)',
-    shadowColor: '#FF69B4',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  newBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: '#4CAF50',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  newBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
+  zScoreResultMuted: {
+    fontSize: 15,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
   },
 });

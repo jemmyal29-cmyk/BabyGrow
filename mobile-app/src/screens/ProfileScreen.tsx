@@ -21,6 +21,8 @@ import { colors, typography, spacing, borderRadius } from '../theme';
 import { useAuthActions } from '../store/authStore';
 import { useTheme } from '../theme/ThemeContext';
 import { ChildhoodGallery, ChildhoodPhoto } from '../types';
+import { ScreenHeader, Button } from '../components/common';
+import HapticService from '../services/HapticService';
 
 const { width } = Dimensions.get('window');
 const PHOTO_SIZE = (width - 64) / 3; // 3 photos per row with margins
@@ -135,7 +137,8 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScreenHeader title="Profil" subtitle="Akun & preferensi" />
       <ScrollView 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -516,8 +519,8 @@ export default function ProfileScreen({ navigation }: any) {
                     text: 'Logout',
                     style: 'destructive',
                     onPress: async () => {
+                      await HapticService.buttonPress();
                       await logout();
-                      // Navigation akan otomatis ke login karena isAuthenticated = false
                     },
                   },
                 ]
@@ -554,7 +557,7 @@ export default function ProfileScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF', // Solid white background
+    backgroundColor: colors.background.default,
   },
   scrollContent: {
     paddingBottom: 100, // Extra padding untuk bottom tabs
