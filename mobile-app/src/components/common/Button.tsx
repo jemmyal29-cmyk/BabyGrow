@@ -1,6 +1,5 @@
 /**
- * BabyGrow Custom Button Component
- * Follows Halodoc-inspired design system
+ * BabyGrow Button — Atomic Component
  */
 
 import React from 'react';
@@ -11,8 +10,9 @@ import {
   ActivityIndicator,
   ViewStyle,
   TextStyle,
+  View,
 } from 'react-native';
-import { colors, typography, spacing, borderRadius } from '../../theme';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 
 export interface ButtonProps {
   title: string;
@@ -39,39 +39,44 @@ export const Button: React.FC<ButtonProps> = ({
   style,
   textStyle,
 }) => {
-  const buttonStyle = [
-    styles.button,
-    styles[variant],
-    styles[size],
-    fullWidth && styles.fullWidth,
-    (disabled || loading) && styles.disabled,
-    style,
-  ];
+  const isDisabled = disabled || loading;
 
-  const textColorStyle = [
-    styles.text,
-    styles[`${variant}Text`],
-    styles[`${size}Text`],
-    (disabled || loading) && styles.disabledText,
-    textStyle,
-  ];
+  const spinnerColor =
+    variant === 'outline' || variant === 'text' || variant === 'secondary'
+      ? colors.primary.main
+      : colors.neutral.white;
 
   return (
     <TouchableOpacity
-      style={buttonStyle}
+      style={[
+        styles.button,
+        styles[variant],
+        styles[size],
+        fullWidth && styles.fullWidth,
+        isDisabled && styles.disabled,
+        style,
+      ]}
       onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.7}
+      disabled={isDisabled}
+      activeOpacity={0.75}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'outline' || variant === 'text' ? colors.primary.main : colors.neutral.white}
-        />
+        <ActivityIndicator color={spinnerColor} />
       ) : (
-        <>
-          {icon && <>{icon}</>}
-          <Text style={textColorStyle}>{title}</Text>
-        </>
+        <View style={styles.content}>
+          {icon ? <View style={styles.icon}>{icon}</View> : null}
+          <Text
+            style={[
+              styles.label,
+              styles[`${variant}Text` as const],
+              styles[`${size}Text` as const],
+              isDisabled && styles.disabledText,
+              textStyle,
+            ]}
+          >
+            {title}
+          </Text>
+        </View>
       )}
     </TouchableOpacity>
   );
@@ -84,10 +89,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: borderRadius.md,
   },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  icon: {
+    marginRight: spacing.sm,
+  },
 
-  // Variants
   primary: {
     backgroundColor: colors.primary.main,
+    ...shadows.pink,
   },
   secondary: {
     backgroundColor: colors.secondary.pureWhite,
@@ -102,8 +115,10 @@ const styles = StyleSheet.create({
   text: {
     backgroundColor: 'transparent',
   },
+  label: {
+    textAlign: 'center',
+  },
 
-  // Sizes
   small: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -120,13 +135,12 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
 
-  // Text styles
   primaryText: {
     color: colors.neutral.white,
     fontWeight: typography.fontWeight.semiBold,
   },
   secondaryText: {
-    color: colors.neutral.white,
+    color: colors.primary.main,
     fontWeight: typography.fontWeight.semiBold,
   },
   outlineText: {
@@ -148,10 +162,11 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
   },
 
-  // States
   disabled: {
     backgroundColor: colors.neutral.gray200,
-    borderColor: colors.border.default,
+    borderColor: colors.neutral.gray300,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   disabledText: {
     color: colors.text.disabled,

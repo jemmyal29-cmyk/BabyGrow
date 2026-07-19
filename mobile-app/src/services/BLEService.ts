@@ -285,6 +285,10 @@ class BLEService {
     }
   }
 
+  private stopMockDataStream(): void {
+    // No continuous mock stream in current implementation
+  }
+
   /**
    * Check if device is connected
    */

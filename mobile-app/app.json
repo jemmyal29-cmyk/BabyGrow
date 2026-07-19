@@ -2,7 +2,7 @@
   "expo": {
     "name": "BabyGrow",
     "slug": "babygrow-mobile",
-    "version": "2.0.0-unicorn",
+    "version": "3.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/logo-babygrow.png",

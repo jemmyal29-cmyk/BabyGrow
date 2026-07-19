@@ -1,6 +1,5 @@
 /**
- * BabyGrow Card Component
- * Reusable card component with consistent styling
+ * BabyGrow Card — Atomic Component
  */
 
 import React from 'react';
@@ -11,7 +10,7 @@ export interface CardProps {
   children: React.ReactNode;
   style?: ViewStyle;
   onPress?: () => void;
-  variant?: 'default' | 'elevated' | 'outlined';
+  variant?: 'default' | 'elevated' | 'outlined' | 'glass';
   padding?: 'none' | 'small' | 'medium' | 'large';
 }
 
@@ -22,12 +21,13 @@ export const Card: React.FC<CardProps> = ({
   variant = 'default',
   padding = 'medium',
 }) => {
-  const cardStyle = [
-    styles.card,
-    styles[variant],
-    styles[`padding${padding.charAt(0).toUpperCase() + padding.slice(1)}`],
-    style,
-  ];
+  const paddingKey = `padding${padding.charAt(0).toUpperCase()}${padding.slice(1)}` as
+    | 'paddingNone'
+    | 'paddingSmall'
+    | 'paddingMedium'
+    | 'paddingLarge';
+
+  const cardStyle = [styles.card, styles[variant], styles[paddingKey], style];
 
   if (onPress) {
     return (
@@ -46,39 +46,27 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
   },
 
-  // Variants
   default: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    ...shadows.soft,
   },
   elevated: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 3,
+    ...shadows.card,
   },
   outlined: {
     borderWidth: 1,
     borderColor: colors.border.default,
   },
+  glass: {
+    backgroundColor: colors.effects.glassWhite,
+    borderWidth: 1,
+    borderColor: colors.border.glass,
+    ...shadows.soft,
+  },
 
-  // Padding options
-  paddingNone: {
-    padding: 0,
-  },
-  paddingSmall: {
-    padding: spacing.sm,
-  },
-  paddingMedium: {
-    padding: spacing.md,
-  },
-  paddingLarge: {
-    padding: spacing.lg,
-  },
+  paddingNone: { padding: 0 },
+  paddingSmall: { padding: spacing.sm },
+  paddingMedium: { padding: spacing.md },
+  paddingLarge: { padding: spacing.lg },
 });
 
 export default Card;

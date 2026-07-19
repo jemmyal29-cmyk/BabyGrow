@@ -1,39 +1,29 @@
 /**
- * BabyGrow 2026 - Theme Context (Dark Mode)
- * Dynamic theme switching with Midnight Pink palette as default
+ * BabyGrow Theme Context — Light / Dark preference
+ * Preference flag may use AsyncStorage (UI preference only, not relational data).
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
+import { colors } from './colors';
 
 interface ThemeColors {
-  // Backgrounds
   background: string;
   surface: string;
   card: string;
-  
-  // Text
   text: string;
   textSecondary: string;
   textTertiary: string;
-  
-  // Primary
   primary: string;
   primaryLight: string;
   primaryDark: string;
-  
-  // Status
   success: string;
   warning: string;
   error: string;
   info: string;
-  
-  // Borders & Shadows
   border: string;
   shadow: string;
-  
-  // Special
   gradient: string[];
 }
 
@@ -45,27 +35,22 @@ interface Theme {
 const lightTheme: Theme = {
   dark: false,
   colors: {
-    background: '#FAFAFA',
-    surface: '#FFFFFF',
-    card: '#FFFFFF',
-    
-    text: '#212121',
-    textSecondary: '#666666',
-    textTertiary: '#999999',
-    
-    primary: '#FF69B4',
-    primaryLight: '#FFB6C1',
-    primaryDark: '#C71585',
-    
-    success: '#4CAF50',
-    warning: '#FFC107',
-    error: '#F44336',
-    info: '#2196F3',
-    
-    border: '#E0E0E0',
-    shadow: 'rgba(0, 0, 0, 0.1)',
-    
-    gradient: ['#FF69B4', '#FFA07A'],
+    background: colors.background.elevated,
+    surface: colors.background.paper,
+    card: colors.background.paper,
+    text: colors.text.primary,
+    textSecondary: colors.text.secondary,
+    textTertiary: colors.text.tertiary,
+    primary: colors.primary.main,
+    primaryLight: colors.primary.light,
+    primaryDark: colors.primary.dark,
+    success: colors.status.success,
+    warning: colors.status.warning,
+    error: colors.status.error,
+    info: colors.status.info,
+    border: colors.border.divider,
+    shadow: colors.effects.shadowLight,
+    gradient: [...colors.secondary.gradient.vibrantPink],
   },
 };
 
@@ -75,24 +60,19 @@ const darkTheme: Theme = {
     background: '#121212',
     surface: '#1E1E1E',
     card: '#2C2C2C',
-    
     text: '#FFFFFF',
     textSecondary: '#CCCCCC',
     textTertiary: '#999999',
-    
-    primary: '#FF69B4',
-    primaryLight: '#FFB6C1',
-    primaryDark: '#FF1493',
-    
-    success: '#66BB6A',
-    warning: '#FFA726',
-    error: '#EF5350',
-    info: '#42A5F5',
-    
+    primary: colors.primary.main,
+    primaryLight: colors.primary.vibrant,
+    primaryDark: colors.primary.dark,
+    success: colors.status.success,
+    warning: colors.status.warning,
+    error: colors.status.error,
+    info: colors.status.info,
     border: '#3A3A3A',
-    shadow: 'rgba(255, 105, 180, 0.3)',
-    
-    gradient: ['#FF1493', '#FF69B4'],
+    shadow: colors.effects.shadowPink,
+    gradient: [colors.primary.dark, colors.primary.main],
   },
 };
 
@@ -109,12 +89,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    // Load theme preference from storage
     loadThemePreference();
 
-    // Listen to system theme changes
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      // Only auto-switch if user hasn't set a preference
       AsyncStorage.getItem('theme_preference').then((pref) => {
         if (!pref) {
           setIsDark(colorScheme === 'dark');
@@ -131,9 +108,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (stored !== null) {
         setIsDark(stored === 'dark');
       } else {
-        // Default to system preference
-        const colorScheme = Appearance.getColorScheme();
-        setIsDark(colorScheme === 'dark');
+        setIsDark(Appearance.getColorScheme() === 'dark');
       }
     } catch (error) {
       console.error('Error loading theme preference:', error);
@@ -159,10 +134,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const theme = isDark ? darkTheme : lightTheme;
-
   return (
-    <ThemeContext.Provider value={{ theme, isDark, toggleTheme, setTheme }}>
+    <ThemeContext.Provider
+      value={{ theme: isDark ? darkTheme : lightTheme, isDark, toggleTheme, setTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   );

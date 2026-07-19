@@ -24,73 +24,87 @@ import { HardwareHealthWidget } from '../components/common/HardwareHealthWidget'
 import MBGQuestionnaireModal from '../components/common/MBGQuestionnaireModal';
 import HapticService from '../services/HapticService';
 import MQTTService from '../services/MQTTService';
+import MeasurementSyncService from '../services/MeasurementSyncService';
+import type { MQTTMeasurement } from '../types';
+import { useChildren } from '../hooks/useChildrenQueries';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 48;
 
 export default function UserDashboardScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { data: children = [] } = useChildren({ parentId: user?.id });
   const [pairingModalVisible, setPairingModalVisible] = React.useState(false);
   const [mbgModalVisible, setMbgModalVisible] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [mqttConnected, setMqttConnected] = React.useState(false);
-  const [isPaired, setIsPaired] = React.useState(false); // Track pairing status
-  const [liveHeight, setLiveHeight] = React.useState(0); // Initial: 0 (no measurement yet)
-  const [liveWeight, setLiveWeight] = React.useState(0); // Initial: 0 (no measurement yet)
+  const [isPaired, setIsPaired] = React.useState(false);
+  const isPairedRef = React.useRef(false);
+  const [liveHeight, setLiveHeight] = React.useState(0);
+  const [liveWeight, setLiveWeight] = React.useState(0);
   const [quality, setQuality] = React.useState<'excellent' | 'good' | 'fair' | 'poor'>('good');
   const [batteryLevel, setBatteryLevel] = React.useState(0);
   const [signalStrength, setSignalStrength] = React.useState(0);
+  const [activeChildId, setActiveChildId] = React.useState<string | null>(null);
 
   const mqttService = React.useMemo(() => MQTTService.getInstance(), []);
+  const syncService = React.useMemo(() => MeasurementSyncService.getInstance(), []);
 
-  // Initialize MQTT Connection
   React.useEffect(() => {
-    const initMQTT = async () => {
-      try {
-        await mqttService.connect();
-      } catch (error) {
-        console.error('MQTT connection failed:', error);
-      }
-    };
+    if (children[0]?.id) {
+      setActiveChildId(children[0].id);
+    }
+  }, [children]);
 
-    initMQTT();
+  React.useEffect(() => {
+    isPairedRef.current = isPaired;
+  }, [isPaired]);
 
-    // Listen to MQTT events
-    mqttService.on('connected', () => {
-      console.log('✅ Dashboard: MQTT Connected');
+  React.useEffect(() => {
+    const onConnected = () => {
       setMqttConnected(true);
       HapticService.success();
-    });
-
-    mqttService.on('measurement', (data: any) => {
-      // Only accept measurements if device is paired
-      if (!isPaired) {
-        console.log('⚠️ Dashboard: Measurement ignored (device not paired)');
-        return;
-      }
-      
-      console.log('📏 Dashboard: New measurement', data);
+    };
+    const onOffline = () => setMqttConnected(false);
+    const onMeasurement = (raw: unknown) => {
+      if (!isPairedRef.current) return;
+      const data = raw as MQTTMeasurement;
       setLiveHeight(data.height_cm);
       setLiveWeight(data.weight_kg || 0);
       setQuality(data.quality);
       setBatteryLevel(data.batteryLevel || 0);
       setSignalStrength(data.signalStrength || 0);
       HapticService.light();
-    });
+    };
 
-    mqttService.on('offline', () => {
-      setMqttConnected(false);
-    });
+    mqttService.on('connected', onConnected);
+    mqttService.on('offline', onOffline);
+    mqttService.on('disconnected', onOffline);
+    mqttService.on('measurement', onMeasurement);
 
-    mqttService.on('error', (error: any) => {
-      console.error('MQTT error:', error);
-      setMqttConnected(false);
-    });
+    (async () => {
+      try {
+        await mqttService.connect();
+      } catch (error) {
+        console.warn('MQTT broker unreachable — enabling simulated mode', error);
+        mqttService.markSimulatedConnected();
+      }
+    })();
+
+    syncService.start();
 
     return () => {
-      mqttService.removeAllListeners();
+      mqttService.off('connected', onConnected);
+      mqttService.off('offline', onOffline);
+      mqttService.off('disconnected', onOffline);
+      mqttService.off('measurement', onMeasurement);
+      syncService.stop();
     };
-  }, []);
+  }, [mqttService, syncService]);
+
+  React.useEffect(() => {
+    syncService.setActiveChild(activeChildId);
+  }, [activeChildId, syncService]);
 
   // Simulate data loading
   React.useEffect(() => {
@@ -191,6 +205,7 @@ export default function UserDashboardScreen({ navigation }: any) {
                 weight={liveWeight}
                 quality={quality}
                 isConnected={mqttConnected}
+                bindMqtt={false}
               />
             </Animated.View>
           )}

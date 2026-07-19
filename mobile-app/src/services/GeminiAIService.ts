@@ -30,10 +30,13 @@ export class GeminiAIService {
   private conversationHistory: GeminiMessage[] = [];
 
   private constructor() {
-    // API Key - Default untuk testing
-    // PENTING: Untuk production, simpan di environment variable!
-    this.apiKey = 'AIzaSyCZiJHNJcO2jTAhnrAAZJR842SzOoYVWhI';
+    this.apiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
     this.apiUrl = `${this.baseURL}/${this.model}:generateContent?key=${this.apiKey}`;
+    if (!this.apiKey) {
+      console.warn(
+        '[Gemini] EXPO_PUBLIC_GEMINI_API_KEY belum di-set. Fitur AI akan memakai template fallback.'
+      );
+    }
   }
 
   static getInstance(): GeminiAIService {

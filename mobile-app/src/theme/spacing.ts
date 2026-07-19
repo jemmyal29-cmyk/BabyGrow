@@ -1,5 +1,6 @@
 /**
- * Spacing Design Tokens
+ * BabyGrow Design Tokens — Spacing
+ * Interim source pending `desain ui/desainuiux.md`.
  */
 
 export const spacing = {
@@ -9,6 +10,6 @@ export const spacing = {
   lg: 24,
   xl: 32,
   xxl: 48,
-};
+} as const;
 
 export default spacing;

@@ -1,7 +1,5 @@
 /**
- * UnderConstructionModal Component
- * Modal cantik untuk fitur yang sedang dalam pengembangan
- * Filosofi: VIBRANT PINK & ELEGANT WHITE
+ * UnderConstructionModal — Placeholder for unfinished features
  */
 
 import React from 'react';
@@ -9,12 +7,12 @@ import {
   Modal,
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { colors, typography, shadows, spacing } from '@theme';
-import { GlassCard } from './GlassCard';
+import { colors, typography, shadows, spacing, borderRadius } from '../../theme';
+import { Card } from './Card';
+import { Button } from './Button';
 
 interface UnderConstructionModalProps {
   visible: boolean;
@@ -35,30 +33,14 @@ export const UnderConstructionModal: React.FC<UnderConstructionModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.backdrop}>
-        <GlassCard variant="white" style={styles.card}>
-          {/* Icon - Construction Emoji */}
+        <Card variant="elevated" padding="large" style={styles.card}>
           <Text style={styles.icon}>🚧</Text>
-          
-          {/* Title */}
-          <Text style={styles.title}>
-            {featureName} Sedang Dikembangkan
-          </Text>
-          
-          {/* Description */}
+          <Text style={styles.title}>{featureName} Sedang Dikembangkan</Text>
           <Text style={styles.description}>
-            Tim kami sedang bekerja keras untuk menghadirkan fitur ini. 
-            Mohon tunggu ya! ✨
+            Tim kami sedang bekerja keras untuk menghadirkan fitur ini. Mohon tunggu ya!
           </Text>
-          
-          {/* Close Button */}
-          <TouchableOpacity
-            style={styles.button}
-            onPress={onClose}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.buttonText}>Mengerti</Text>
-          </TouchableOpacity>
-        </GlassCard>
+          <Button title="Mengerti" onPress={onClose} fullWidth />
+        </Card>
       </View>
     </Modal>
   );
@@ -78,6 +60,7 @@ const styles = StyleSheet.create({
     width: width - 60,
     maxWidth: 400,
     alignItems: 'center',
+    borderRadius: borderRadius.lg,
     ...shadows.large,
   },
   icon: {
@@ -87,10 +70,9 @@ const styles = StyleSheet.create({
   title: {
     fontSize: typography.fontSize.xxl,
     fontWeight: typography.fontWeight.bold,
-    color: colors.primary.vibrant,
+    color: colors.primary.main,
     textAlign: 'center',
     marginBottom: spacing.sm,
-    letterSpacing: typography.letterSpacing.tight,
   },
   description: {
     fontSize: typography.fontSize.md,
@@ -99,19 +81,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.lg,
     lineHeight: 24,
-  },
-  button: {
-    backgroundColor: colors.primary.vibrant,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    ...shadows.pink,
-  },
-  buttonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.text.white,
-    letterSpacing: typography.letterSpacing.wide,
   },
 });
 

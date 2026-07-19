@@ -1,6 +1,6 @@
 /**
  * Main App Navigator with RBAC
- * Role-Based Access Control: Separate navigation for USER and ADMIN
+ * Single navigator — Role-Based Access Control for USER and ADMIN
  */
 
 import React from 'react';
@@ -9,8 +9,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth, useIsAdmin } from '../store/authStore';
+import { colors, typography } from '../theme';
 
-// Screens
 import LoginScreen from '../screens/LoginScreen';
 import UserDashboardScreen from '../screens/UserDashboardScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
@@ -23,16 +23,11 @@ import ManualMeasurementScreen from '../screens/ManualMeasurementScreen';
 import RecipeListScreen from '../screens/RecipeListScreen';
 import GrowthChartScreen from '../screens/GrowthChartScreen';
 import EditChildProfileScreen from '../screens/EditChildProfileScreen';
-
-// Legacy screens
-import HomeScreen from '../screens/HomeScreen';
 import ChildrenScreen from '../screens/ChildrenScreen';
 import AIAssistantScreen from '../screens/AIAssistantScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
-
-// ==================== USER TABS (Parents/Caregivers) ====================
 
 function UserTabs() {
   return (
@@ -41,7 +36,7 @@ function UserTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: colors.neutral.white,
           borderTopWidth: 0,
           height: 70,
           paddingBottom: 10,
@@ -52,11 +47,11 @@ function UserTabs() {
           shadowOpacity: 0.1,
           shadowRadius: 8,
         },
-        tabBarActiveTintColor: '#FF69B4',
-        tabBarInactiveTintColor: '#999999',
+        tabBarActiveTintColor: colors.primary.main,
+        tabBarInactiveTintColor: colors.neutral.gray500,
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
+          fontSize: typography.fontSize.xs,
+          fontWeight: typography.fontWeight.semiBold,
         },
       }}
     >
@@ -96,8 +91,6 @@ function UserTabs() {
   );
 }
 
-// ==================== ADMIN TABS (Health Workers) ====================
-
 function AdminTabs() {
   return (
     <Tab.Navigator
@@ -105,18 +98,18 @@ function AdminTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#1A237E',
+          backgroundColor: colors.admin.tabBar,
           borderTopWidth: 0,
           height: 70,
           paddingBottom: 10,
           paddingTop: 8,
           elevation: 8,
         },
-        tabBarActiveTintColor: '#FF69B4',
+        tabBarActiveTintColor: colors.primary.main,
         tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.6)',
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
+          fontSize: typography.fontSize.xs,
+          fontWeight: typography.fontWeight.semiBold,
         },
       }}
     >
@@ -148,48 +141,32 @@ function AdminTabs() {
   );
 }
 
-// ==================== ROOT NAVIGATOR ====================
-
 export default function AppNavigator() {
   const { isAuthenticated } = useAuth();
   const isAdmin = useIsAdmin();
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        id="RootStack"
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
+      <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
-          // Public Routes (Not logged in)
           <Stack.Screen name="Login" component={LoginScreen} />
         ) : isAdmin ? (
-          // Admin Routes
           <>
             <Stack.Screen name="AdminTabs" component={AdminTabs} />
             <Stack.Screen name="ChildDetail" component={ChildDetailScreen} />
             <Stack.Screen name="AddChild" component={AddChildScreen} />
-            <Stack.Screen 
-              name="GrowthChart" 
-              component={GrowthChartScreen} 
-              options={{
-                animation: 'slide_from_right',
-                animationDuration: 300,
-              }}
+            <Stack.Screen
+              name="GrowthChart"
+              component={GrowthChartScreen}
+              options={{ animation: 'slide_from_right', animationDuration: 300 }}
             />
-            <Stack.Screen 
-              name="EditChildProfile" 
-              component={EditChildProfileScreen} 
-              options={{
-                animation: 'slide_from_bottom',
-                animationDuration: 400,
-              }}
+            <Stack.Screen
+              name="EditChildProfile"
+              component={EditChildProfileScreen}
+              options={{ animation: 'slide_from_bottom', animationDuration: 400 }}
             />
           </>
         ) : (
-          // User Routes (Parents)
           <>
             <Stack.Screen name="UserTabs" component={UserTabs} />
             <Stack.Screen name="ChildDetail" component={ChildDetailScreen} />
@@ -198,21 +175,15 @@ export default function AppNavigator() {
             <Stack.Screen name="ManualMeasurement" component={ManualMeasurementScreen} />
             <Stack.Screen name="RecipeList" component={RecipeListScreen} />
             <Stack.Screen name="AIAssistant" component={AIAssistantScreen} />
-            <Stack.Screen 
-              name="GrowthChart" 
-              component={GrowthChartScreen} 
-              options={{
-                animation: 'slide_from_right',
-                animationDuration: 300,
-              }}
+            <Stack.Screen
+              name="GrowthChart"
+              component={GrowthChartScreen}
+              options={{ animation: 'slide_from_right', animationDuration: 300 }}
             />
-            <Stack.Screen 
-              name="EditChildProfile" 
-              component={EditChildProfileScreen} 
-              options={{
-                animation: 'slide_from_bottom',
-                animationDuration: 400,
-              }}
+            <Stack.Screen
+              name="EditChildProfile"
+              component={EditChildProfileScreen}
+              options={{ animation: 'slide_from_bottom', animationDuration: 400 }}
             />
           </>
         )}

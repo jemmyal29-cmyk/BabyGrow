@@ -1,6 +1,5 @@
 /**
  * Manual Measurement Screen with IoT Auto-Fill
- * Zero-Input UX: Automatically filled from sensor data
  */
 
 import React from 'react';
@@ -8,11 +7,15 @@ import { View, Text, StyleSheet, ScrollView, TextInput, Alert } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Neumorphic3DCard } from '../components/common/Neumorphic3DCard';
-import { Neumorphic3DButton } from '../components/common/Neumorphic3DButton';
+import { Card, Button } from '../components/common';
 import MQTTService from '../services/MQTTService';
 import HapticService from '../services/HapticService';
-import { calculateAgeInMonths, calculateHeightForAge, calculateWeightForAge } from '../utils/zScoreCalculator';
+import { colors, spacing, typography, borderRadius } from '../theme';
+import {
+  calculateAgeInMonths,
+  calculateHeightForAge,
+  calculateWeightForAge,
+} from '../utils/zScoreCalculator';
 
 export default function ManualMeasurementScreen({ navigation }: any) {
   const [height, setHeight] = React.useState('');
@@ -20,7 +23,6 @@ export default function ManualMeasurementScreen({ navigation }: any) {
   const [isAutoFilled, setIsAutoFilled] = React.useState(false);
   const mqttService = React.useMemo(() => MQTTService.getInstance(), []);
 
-  // Auto-fill from IoT sensor on mount
   React.useEffect(() => {
     const latestData = mqttService.getLatestMeasurement();
     if (latestData && latestData.height_cm > 0) {
@@ -28,14 +30,14 @@ export default function ManualMeasurementScreen({ navigation }: any) {
       setWeight(latestData.weight_kg > 0 ? latestData.weight_kg.toFixed(1) : '');
       setIsAutoFilled(true);
       HapticService.success();
-      
+
       Alert.alert(
-        '✅ Data Terdeteksi',
-        `Tinggi: ${latestData.height_cm.toFixed(1)} cm\\nData otomatis terisi dari sensor IoT!`,
+        'Data Terdeteksi',
+        `Tinggi: ${latestData.height_cm.toFixed(1)} cm\nData otomatis terisi dari sensor IoT!`,
         [{ text: 'OK' }]
       );
     }
-  }, []);
+  }, [mqttService]);
 
   const handleSave = async () => {
     if (!height) {
@@ -45,7 +47,6 @@ export default function ManualMeasurementScreen({ navigation }: any) {
 
     await HapticService.buttonPress();
 
-    // Mock child data for Z-Score calculation
     const childData = {
       dateOfBirth: '2023-06-15',
       gender: 'male' as const,
@@ -55,8 +56,8 @@ export default function ManualMeasurementScreen({ navigation }: any) {
     const heightNum = parseFloat(height);
     const weightNum = parseFloat(weight || '0');
 
-    // Calculate Z-Scores using WHO standards
-    let zScoreHeight, zScoreWeight;
+    let zScoreHeight;
+    let zScoreWeight;
     try {
       zScoreHeight = calculateHeightForAge(heightNum, ageMonths, childData.gender);
       if (weightNum > 0) {
@@ -68,91 +69,76 @@ export default function ManualMeasurementScreen({ navigation }: any) {
 
     Alert.alert(
       'Pengukuran Tersimpan',
-      `Tinggi: ${height} cm\\nBerat: ${weight || '-'} kg\\n\\nZ-Score Tinggi: ${zScoreHeight?.zscore || '-'}\\nStatus: ${zScoreHeight?.category || '-'}\\n\\nData berhasil disimpan!`,
-      [
-        {
-          text: 'Kembali',
-          onPress: () => navigation.goBack(),
-        },
-      ]
+      `Tinggi: ${height} cm\nBerat: ${weight || '-'} kg\n\nZ-Score Tinggi: ${zScoreHeight?.zscore ?? '-'}\nStatus: ${zScoreHeight?.category ?? '-'}${zScoreWeight ? `\nZ-Score Berat: ${zScoreWeight.zscore}` : ''}\n\nData berhasil disimpan!`,
+      [{ text: 'Kembali', onPress: () => navigation.goBack() }]
     );
   };
 
   return (
-    <LinearGradient
-      colors={['#FFE5EC', '#FFF0F5', '#FFFFFF']}
-      style={styles.gradient}
-    >
+    <LinearGradient colors={[...colors.secondary.gradient.softBg]} style={styles.gradient}>
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <Animated.View entering={FadeInDown.duration(600)}>
-            <Neumorphic3DCard variant="raised" style={styles.headerCard}>
+            <Card variant="elevated" padding="large" style={styles.headerCard}>
               <Text style={styles.emoji}>⚖️</Text>
               <Text style={styles.title}>Ukur Manual</Text>
               <Text style={styles.subtitle}>
-                {isAutoFilled ? '✅ Data terisi otomatis dari sensor' : 'Input data pengukuran anak'}
+                {isAutoFilled
+                  ? 'Data terisi otomatis dari sensor'
+                  : 'Input data pengukuran anak'}
               </Text>
-            </Neumorphic3DCard>
+            </Card>
           </Animated.View>
 
-          {/* Height Input */}
           <Animated.View entering={FadeInDown.delay(200).duration(600)}>
-            <Neumorphic3DCard variant="glass" style={styles.inputCard}>
-              <Text style={styles.inputLabel}>📏 Tinggi Badan (cm)</Text>
+            <Card variant="glass" padding="large" style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Tinggi Badan (cm)</Text>
               <TextInput
                 style={styles.input}
                 placeholder="78.5"
                 keyboardType="decimal-pad"
                 value={height}
                 onChangeText={setHeight}
-                placeholderTextColor="#BDBDBD"
+                placeholderTextColor={colors.text.disabled}
               />
-              {isAutoFilled && (
-                <Text style={styles.autoFillBadge}>🤖 Auto-filled dari IoT</Text>
-              )}
-            </Neumorphic3DCard>
+              {isAutoFilled ? (
+                <Text style={styles.autoFillBadge}>Auto-filled dari IoT</Text>
+              ) : null}
+            </Card>
           </Animated.View>
 
-          {/* Weight Input */}
           <Animated.View entering={FadeInDown.delay(300).duration(600)}>
-            <Neumorphic3DCard variant="glass" style={styles.inputCard}>
-              <Text style={styles.inputLabel}>⚖️ Berat Badan (kg)</Text>
+            <Card variant="glass" padding="large" style={styles.inputCard}>
+              <Text style={styles.inputLabel}>Berat Badan (kg)</Text>
               <TextInput
                 style={styles.input}
                 placeholder="10.2"
                 keyboardType="decimal-pad"
                 value={weight}
                 onChangeText={setWeight}
-                placeholderTextColor="#BDBDBD"
+                placeholderTextColor={colors.text.disabled}
               />
-            </Neumorphic3DCard>
+            </Card>
           </Animated.View>
 
-          {/* Info */}
           <Animated.View entering={FadeInDown.delay(400).duration(600)}>
-            <Neumorphic3DCard variant="flat" style={styles.infoCard}>
-              <Text style={styles.infoText}>💡 Tips</Text>
+            <Card variant="outlined" padding="large">
+              <Text style={styles.infoText}>Tips</Text>
               <Text style={styles.infoDesc}>
-                Jika alat IoT terhubung, data tinggi akan terisi otomatis.
-                Anda tinggal memeriksa dan menyimpan!
+                Jika alat IoT terhubung, data tinggi akan terisi otomatis. Anda tinggal
+                memeriksa dan menyimpan!
               </Text>
-            </Neumorphic3DCard>
+            </Card>
           </Animated.View>
 
-          {/* Action Buttons */}
           <View style={styles.buttonGroup}>
-            <Neumorphic3DButton
-              title="Simpan Pengukuran"
-              onPress={handleSave}
-              variant="primary"
-              size="large"
-              icon="✅"
-            />
-            <Neumorphic3DButton
+            <Button title="Simpan Pengukuran" onPress={handleSave} size="large" fullWidth />
+            <Button
               title="Kembali"
               onPress={() => navigation.goBack()}
               variant="secondary"
               size="large"
+              fullWidth
             />
           </View>
         </ScrollView>
@@ -162,78 +148,63 @@ export default function ManualMeasurementScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  gradient: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
+  gradient: { flex: 1 },
+  container: { flex: 1 },
   content: {
-    padding: 24,
-    gap: 20,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  headerCard: {
-    alignItems: 'center',
-    padding: 32,
-  },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
+  headerCard: { alignItems: 'center' },
+  emoji: { fontSize: 64, marginBottom: spacing.md },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#212121',
-    marginBottom: 8,
+    fontSize: typography.fontSize.xxxl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#757575',
+    fontSize: typography.fontSize.md,
+    color: colors.text.secondary,
     textAlign: 'center',
   },
-  inputCard: {
-    padding: 24,
-  },
+  inputCard: {},
   inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
-    marginBottom: 12,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   input: {
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: colors.background.paper,
     borderWidth: 2,
-    borderColor: '#FF69B4',
-    borderRadius: 16,
-    padding: 16,
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FF69B4',
+    borderColor: colors.primary.main,
+    borderRadius: borderRadius.sm,
+    padding: spacing.md,
+    fontSize: typography.fontSize.xxl,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.primary.main,
     textAlign: 'center',
   },
   autoFillBadge: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4CAF50',
+    marginTop: spacing.sm,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.status.success,
     textAlign: 'center',
   },
-  infoCard: {
-    padding: 20,
-  },
   infoText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2196F3',
-    marginBottom: 8,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.status.info,
+    marginBottom: spacing.sm,
   },
   infoDesc: {
-    fontSize: 14,
-    color: '#757575',
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
     lineHeight: 22,
   },
   buttonGroup: {
-    gap: 12,
-    marginTop: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
 });
