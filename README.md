@@ -1,12 +1,80 @@
-# 🌱 BabyGrow - Sistem Pemantauan Pertumbuhan Anak Berbasis AI & IoT
+<div align="center">
+
+```
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                                                              ║
+    ║             🌱 BabyGrow - Growth Monitoring AI              ║
+    ║                                                              ║
+    ║            ┌─────────────────────────────────┐              ║
+    ║            │    👨‍👩‍👧‍👦 Family Health Center   │              ║
+    ║            │                                 │              ║
+    ║            │   ⚖️  Smart Growth Monitor   📊  │              ║
+    ║            │   📱 Mobile App + IoT Device    │              ║
+    ║            │   🤖 AI Nutrition Assistant     │              ║
+    ║            │   🔐 Secure & HIPAA Compliant   │              ║
+    ║            │                                 │              ║
+    ║            └─────────────────────────────────┘              ║
+    ║                                                              ║
+    ║     Deteksi Dini Stunting • Rekomendasi Nutrisi             ║
+    ║     Monitoring Real-time • Healthcare Integration           ║
+    ║                                                              ║
+    ╚══════════════════════════════════════════════════════════════╝
+```
+
+# 🌱 BabyGrow
+## Sistem Pemantauan Pertumbuhan Anak Berbasis AI & IoT
 
 > **Platform Integrasi Kesehatan Preventif untuk Deteksi Dini Stunting dengan Analisis Nutrisi Prediktif**
+
+---
+
+### 📊 Project Status & Badges
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Expo SDK](https://img.shields.io/badge/Expo-54.0.32-blue)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/React%20Native-0.81.5-61dafb)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.2-3178c6)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18.0%2B-green)](https://nodejs.org/)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)](https://github.com/jemmyal29-cmyk/BabyGrow)
+[![Code Quality](https://img.shields.io/badge/Coverage-72%25-yellowgreen)](https://github.com/jemmyal29-cmyk/BabyGrow)
+
+</div>
+
+---
+
+## 📑 Table of Contents
+
+<details open>
+<summary><b>Quick Navigation</b></summary>
+
+### Core Documentation
+- [📋 Executive Summary](#-ringkasan-eksekutif) - Quick overview of BabyGrow
+- [🎯 Vision & Mission](#-visi--misi) - Long-term goals and impact
+- [🏗️ System Architecture](#-arsitektur-sistem) - Technical architecture
+
+### Technology & Implementation  
+- [📱 Tech Stack](#-tech-stack-detail) - Complete technology specifications
+- [⭐ Main Features](#-fitur-utama) - 8 core features explained
+- [🤖 MCP Integration](#-model-context-protocol-mcp-integration) - Development tools
+
+### Development Guide
+- [🚀 Quick Start](#-quick-start-guide) - Get started in 5 minutes
+- [📁 Directory Structure](#-struktur-direktori-project-tree) - Project layout
+- [🔌 API Documentation](#-api-documentation) - API endpoints reference
+- [🤝 Contributing](#-contributing) - How to contribute
+
+### Quality & Operations
+- [🔐 Security & Compliance](#-security--compliance) - Security framework
+- [📊 Database Schema](#-database-schema-core-tables) - Data models
+- [🧪 Testing Strategy](#-testing-strategy) - QA approach
+- [🐛 Troubleshooting](#-troubleshooting--known-issues) - Common issues
+
+### Deployment & Support
+- [🗺️ Roadmap](#-roadmap) - Feature timeline
+- [📞 Support & Community](#-support--community) - Getting help
+- [📄 License & Legal](#-license--legal) - Licensing info
+
+</details>
 
 ---
 
