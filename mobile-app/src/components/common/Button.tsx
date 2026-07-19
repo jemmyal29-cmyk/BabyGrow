@@ -1,5 +1,6 @@
 /**
- * BabyGrow Button — Atomic Component
+ * Button — Atomic (desainuiux.md)
+ * Primary = pill + primaryGlow; haptic on every primary action
  */
 
 import React from 'react';
@@ -13,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import HapticService from '../../services/HapticService';
 
 export interface ButtonProps {
   title: string;
@@ -23,6 +25,7 @@ export interface ButtonProps {
   disabled?: boolean;
   fullWidth?: boolean;
   icon?: React.ReactNode;
+  haptic?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -31,20 +34,27 @@ export const Button: React.FC<ButtonProps> = ({
   title,
   onPress,
   variant = 'primary',
-  size = 'medium',
+  size = 'large',
   loading = false,
   disabled = false,
-  fullWidth = false,
+  fullWidth = true,
   icon,
+  haptic = true,
   style,
   textStyle,
 }) => {
   const isDisabled = disabled || loading;
 
+  const handlePress = async () => {
+    if (isDisabled) return;
+    if (haptic) {
+      await HapticService.buttonPress();
+    }
+    onPress();
+  };
+
   const spinnerColor =
-    variant === 'outline' || variant === 'text' || variant === 'secondary'
-      ? colors.primary.main
-      : colors.neutral.white;
+    variant === 'primary' ? colors.primary.onPrimary : colors.primary.main;
 
   return (
     <TouchableOpacity
@@ -56,9 +66,9 @@ export const Button: React.FC<ButtonProps> = ({
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
-      activeOpacity={0.75}
+      activeOpacity={0.92}
     >
       {loading ? (
         <ActivityIndicator color={spinnerColor} />
@@ -87,7 +97,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.full,
   },
   content: {
     flexDirection: 'row',
@@ -97,59 +107,56 @@ const styles = StyleSheet.create({
   icon: {
     marginRight: spacing.sm,
   },
+  label: {
+    ...typography.styles.buttonText,
+    textAlign: 'center',
+  },
 
   primary: {
     backgroundColor: colors.primary.main,
-    ...shadows.pink,
+    ...shadows.primaryGlow,
   },
   secondary: {
-    backgroundColor: colors.secondary.pureWhite,
+    backgroundColor: colors.surface.lowest,
     borderWidth: 1.5,
     borderColor: colors.primary.main,
   },
   outline: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: colors.primary.main,
+    borderColor: colors.outline.default,
   },
   text: {
     backgroundColor: 'transparent',
-  },
-  label: {
-    textAlign: 'center',
   },
 
   small: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    minHeight: 36,
+    minHeight: 40,
   },
   medium: {
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.element,
     paddingHorizontal: spacing.lg,
     minHeight: 48,
   },
   large: {
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     minHeight: 56,
   },
 
   primaryText: {
-    color: colors.neutral.white,
-    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary.onPrimary,
   },
   secondaryText: {
     color: colors.primary.main,
-    fontWeight: typography.fontWeight.semiBold,
   },
   outlineText: {
-    color: colors.primary.main,
-    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.onSurface,
   },
   textText: {
     color: colors.primary.main,
-    fontWeight: typography.fontWeight.medium,
   },
 
   smallText: {
@@ -159,7 +166,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.md,
   },
   largeText: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.fontSize.md,
   },
 
   disabled: {
@@ -171,7 +178,6 @@ const styles = StyleSheet.create({
   disabledText: {
     color: colors.text.disabled,
   },
-
   fullWidth: {
     width: '100%',
   },

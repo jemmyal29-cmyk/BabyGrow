@@ -1,10 +1,12 @@
 /**
- * BabyGrow Card — Atomic Component
+ * Card — Atomic (desainuiux.md)
+ * Uniform padding (container/stack) + radius xl (24) + diffusion shadow
  */
 
 import React from 'react';
 import { View, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import { colors, spacing, borderRadius, shadows } from '../../theme';
+import HapticService from '../../services/HapticService';
 
 export interface CardProps {
   children: React.ReactNode;
@@ -12,14 +14,16 @@ export interface CardProps {
   onPress?: () => void;
   variant?: 'default' | 'elevated' | 'outlined' | 'glass';
   padding?: 'none' | 'small' | 'medium' | 'large';
+  haptic?: boolean;
 }
 
 export const Card: React.FC<CardProps> = ({
   children,
   style,
   onPress,
-  variant = 'default',
-  padding = 'medium',
+  variant = 'elevated',
+  padding = 'large',
+  haptic = true,
 }) => {
   const paddingKey = `padding${padding.charAt(0).toUpperCase()}${padding.slice(1)}` as
     | 'paddingNone'
@@ -31,7 +35,14 @@ export const Card: React.FC<CardProps> = ({
 
   if (onPress) {
     return (
-      <TouchableOpacity style={cardStyle} onPress={onPress} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={cardStyle}
+        onPress={async () => {
+          if (haptic) await HapticService.buttonPress();
+          onPress();
+        }}
+        activeOpacity={0.9}
+      >
         {children}
       </TouchableOpacity>
     );
@@ -42,15 +53,14 @@ export const Card: React.FC<CardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.background.paper,
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
   },
-
   default: {
     ...shadows.soft,
   },
   elevated: {
-    ...shadows.card,
+    ...shadows.diffusion,
   },
   outlined: {
     borderWidth: 1,
@@ -62,11 +72,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border.glass,
     ...shadows.soft,
   },
-
   paddingNone: { padding: 0 },
-  paddingSmall: { padding: spacing.sm },
-  paddingMedium: { padding: spacing.md },
-  paddingLarge: { padding: spacing.lg },
+  paddingSmall: { padding: spacing.element },
+  paddingMedium: { padding: spacing.stackGap },
+  paddingLarge: { padding: spacing.containerPadding },
 });
 
 export default Card;

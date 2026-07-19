@@ -1,6 +1,5 @@
 /**
- * BabyGrow Theme Context — Light / Dark preference
- * Preference flag may use AsyncStorage (UI preference only, not relational data).
+ * Theme Context — aligned with desainuiux.md light professional palette
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -35,14 +34,14 @@ interface Theme {
 const lightTheme: Theme = {
   dark: false,
   colors: {
-    background: colors.background.elevated,
-    surface: colors.background.paper,
-    card: colors.background.paper,
-    text: colors.text.primary,
+    background: colors.background.default,
+    surface: colors.surface.lowest,
+    card: colors.surface.lowest,
+    text: colors.text.onSurface,
     textSecondary: colors.text.secondary,
-    textTertiary: colors.text.tertiary,
+    textTertiary: colors.text.onSurfaceVariant,
     primary: colors.primary.main,
-    primaryLight: colors.primary.light,
+    primaryLight: colors.primary.fixedDim,
     primaryDark: colors.primary.dark,
     success: colors.status.success,
     warning: colors.status.warning,
@@ -64,8 +63,8 @@ const darkTheme: Theme = {
     textSecondary: '#CCCCCC',
     textTertiary: '#999999',
     primary: colors.primary.main,
-    primaryLight: colors.primary.vibrant,
-    primaryDark: colors.primary.dark,
+    primaryLight: colors.primary.fixedDim,
+    primaryDark: colors.primary.container,
     success: colors.status.success,
     warning: colors.status.warning,
     error: colors.status.error,
@@ -90,38 +89,31 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     loadThemePreference();
-
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
       AsyncStorage.getItem('theme_preference').then((pref) => {
-        if (!pref) {
-          setIsDark(colorScheme === 'dark');
-        }
+        if (!pref) setIsDark(colorScheme === 'dark');
       });
     });
-
     return () => subscription.remove();
   }, []);
 
   const loadThemePreference = async () => {
     try {
       const stored = await AsyncStorage.getItem('theme_preference');
-      if (stored !== null) {
-        setIsDark(stored === 'dark');
-      } else {
-        setIsDark(Appearance.getColorScheme() === 'dark');
-      }
-    } catch (error) {
-      console.error('Error loading theme preference:', error);
+      if (stored !== null) setIsDark(stored === 'dark');
+      else setIsDark(false); // design default: light professional
+    } catch {
+      setIsDark(false);
     }
   };
 
   const toggleTheme = async () => {
-    const newValue = !isDark;
-    setIsDark(newValue);
+    const next = !isDark;
+    setIsDark(next);
     try {
-      await AsyncStorage.setItem('theme_preference', newValue ? 'dark' : 'light');
-    } catch (error) {
-      console.error('Error saving theme preference:', error);
+      await AsyncStorage.setItem('theme_preference', next ? 'dark' : 'light');
+    } catch {
+      // ignore
     }
   };
 
@@ -129,8 +121,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsDark(dark);
     try {
       await AsyncStorage.setItem('theme_preference', dark ? 'dark' : 'light');
-    } catch (error) {
-      console.error('Error saving theme preference:', error);
+    } catch {
+      // ignore
     }
   };
 
@@ -145,9 +137,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
+  if (!context) throw new Error('useTheme must be used within a ThemeProvider');
   return context;
 };
 
