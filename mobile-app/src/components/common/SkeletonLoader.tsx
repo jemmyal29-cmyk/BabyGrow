@@ -13,6 +13,7 @@ import Animated, {
   withSequence,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import {colors, spacing, borderRadius, shadows} from '../../theme';
 
 interface SkeletonLoaderProps {
   variant?: 'card' | 'list' | 'profile' | 'stat';
@@ -72,7 +73,7 @@ export const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({
 const SkeletonCard: React.FC<{ style: any }> = ({ style }) => (
   <Animated.View style={[styles.card, style]}>
     <LinearGradient
-      colors={['#F5F5F5', '#EEEEEE', '#F5F5F5']}
+      colors={[colors.surface.low, colors.surface.mid, colors.surface.low]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.cardGradient}
@@ -134,47 +135,43 @@ const SkeletonStat: React.FC<{ style: any }> = ({ style }) => (
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    padding: spacing.md,
   },
   item: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   card: {
-    borderRadius: 24,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    ...shadows.soft,
   },
   cardGradient: {
-    padding: 20,
+    padding: spacing.lg,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   avatar: {
     width: 60,
     height: 60,
-    borderRadius: 30,
-    backgroundColor: '#E0E0E0',
-    marginRight: 16,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.highest,
+    marginRight: spacing.md,
   },
   cardInfo: {
     flex: 1,
   },
   line: {
     height: 12,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 6,
+    backgroundColor: colors.surface.highest,
+    borderRadius: borderRadius.sm,
   },
   cardDivider: {
     height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 16,
+    backgroundColor: colors.surface.highest,
+    marginVertical: spacing.md,
   },
   cardStats: {
     flexDirection: 'row',
@@ -186,45 +183,41 @@ const styles = StyleSheet.create({
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: colors.surface.low,
+    borderRadius: borderRadius.md,
+    padding: spacing.element,
   },
   listAvatar: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E0E0E0',
-    marginRight: 12,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.surface.highest,
+    marginRight: spacing.element,
   },
   listInfo: {
     flex: 1,
   },
   profile: {
     alignItems: 'center',
-    padding: 24,
+    padding: spacing.lg,
   },
   profileAvatar: {
     width: 100,
     height: 100,
-    borderRadius: 50,
-    backgroundColor: '#E0E0E0',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.highest,
   },
   statCard: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: colors.surface.low,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 2, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    ...shadows.sm,
   },
   statIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E0E0E0',
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.surface.highest,
   },
 });

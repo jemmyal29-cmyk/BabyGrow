@@ -1,12 +1,6 @@
 /**
  * BabyGrow AI Screen - Real AI Chat Interface
  * Solusi Pintar Cegah Stunting
- * 
- * IDENTITAS:
- * - Nama: BabyGrow AI (bukan "AI Analisis")
- * - Slogan: "Solusi Pintar Cegah Stunting"
- * - Kepribadian: Ramah, Empatik, Ceria, Profesional, Medis
- * - Role: Teman Diskusi yang Pintar
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -24,22 +18,52 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { ScreenHeader, Button } from '../components/common';
 import AIAssistantService, { AIMessage, Language } from '../services/AIAssistantService';
+
+const QUICK_ACTIONS: {
+  label: string;
+  prompt: string;
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+}[] = [
+  {
+    label: 'Analisis Pertumbuhan',
+    prompt: 'Analisis pertumbuhan anak saya',
+    icon: 'chart-line',
+  },
+  {
+    label: 'Saran Nutrisi',
+    prompt: 'Berikan saran menu bergizi',
+    icon: 'food-apple',
+  },
+  {
+    label: 'Panduan IoT',
+    prompt: 'Cara menggunakan IoT device',
+    icon: 'bluetooth',
+  },
+  {
+    label: 'Info Stunting',
+    prompt: 'Apa itu stunting?',
+    icon: 'help-circle-outline',
+  },
+];
 
 export default function AIAssistantScreen() {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState<Language['code']>('id');
-  const [userRole, setUserRole] = useState<'user' | 'admin' | 'super_user'>('user');
+  const [currentLanguage] = useState<Language['code']>('id');
+  const [userRole] = useState<'user' | 'admin' | 'super_user'>('user');
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState('AIzaSyCZiJHNJcO2jTAhnrAAZJR842SzOoYVWhI');
-  const [realAIEnabled, setRealAIEnabled] = useState(true); // Real AI ON - Dynamic responses
+  const [apiKey, setApiKey] = useState(
+    process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? ''
+  );
+  const [realAIEnabled, setRealAIEnabled] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    // Send welcome message
     sendWelcomeMessage();
   }, []);
 
@@ -58,7 +82,6 @@ export default function AIAssistantScreen() {
     setInputText('');
     setIsLoading(true);
 
-    // Create user message
     const userMessage: AIMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -69,20 +92,17 @@ export default function AIAssistantScreen() {
     setMessages((prev) => [...prev, userMessage]);
 
     try {
-      // Get AI response with role-based context
       const response = await AIAssistantService.generateResponse(userMessageText, {
         userRole,
         language: currentLanguage,
-        // In production, pass actual child data and measurements
       });
-
       setMessages((prev) => [...prev, response]);
     } catch (error) {
       console.error('AI Response Error:', error);
       const errorMessage: AIMessage = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: '⚠️ Maaf, terjadi kesalahan. Silakan coba lagi.',
+        content: 'Maaf, terjadi kesalahan. Silakan coba lagi.',
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -90,7 +110,6 @@ export default function AIAssistantScreen() {
       setIsLoading(false);
     }
 
-    // Scroll to bottom
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
@@ -109,10 +128,13 @@ export default function AIAssistantScreen() {
 
   const handleSaveApiKey = () => {
     if (apiKey.trim().length < 20) {
-      Alert.alert('Error', 'API key tidak valid. Pastikan Anda memasukkan API key yang benar dari Google AI Studio.');
+      Alert.alert(
+        'Error',
+        'API key tidak valid. Pastikan Anda memasukkan API key yang benar dari Google AI Studio.'
+      );
       return;
     }
-    
+
     AIAssistantService.setGeminiApiKey(apiKey.trim());
     Alert.alert(
       'Berhasil!',
@@ -124,14 +146,14 @@ export default function AIAssistantScreen() {
   const toggleRealAI = (enabled: boolean) => {
     setRealAIEnabled(enabled);
     AIAssistantService.setUseRealAI(enabled);
-    
+
     if (enabled && !AIAssistantService.isRealAIEnabled()) {
       Alert.alert(
         'API Key Diperlukan',
         'Untuk menggunakan REAL AI, Anda perlu memasukkan Google Gemini API key terlebih dahulu.',
         [
           { text: 'Batal', style: 'cancel' },
-          { text: 'Set API Key', onPress: () => setShowSettings(true) }
+          { text: 'Set API Key', onPress: () => setShowSettings(true) },
         ]
       );
     }
@@ -148,11 +170,15 @@ export default function AIAssistantScreen() {
           isUser ? styles.userMessageContainer : styles.assistantMessageContainer,
         ]}
       >
-        {!isUser && (
+        {!isUser ? (
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarEmoji}>🤖</Text>
+            <MaterialCommunityIcons
+              name="robot-outline"
+              size={20}
+              color={colors.primary.main}
+            />
           </View>
-        )}
+        ) : null}
 
         <View
           style={[
@@ -185,221 +211,128 @@ export default function AIAssistantScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.headerAvatar}>
-              <Text style={styles.headerAvatarEmoji}>🤖</Text>
-            </View>
-            <View>
-              <Text style={styles.headerTitle}>BabyGrow AI</Text>
-              <Text style={styles.headerSubtitle}>Solusi Pintar Cegah Stunting</Text>
-            </View>
-          </View>
-          <TouchableOpacity 
-            style={styles.settingsButton}
-            onPress={() => setShowSettings(true)}
-          >
-            <Text style={styles.settingsIcon}>⚙️</Text>
-          </TouchableOpacity>
-        </View>
+        <ScreenHeader
+          title="BabyGrow AI"
+          subtitle="Solusi Pintar Cegah Stunting"
+          brand
+          rightAction={
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => setShowSettings(true)}
+              hitSlop={12}
+            >
+              <MaterialCommunityIcons
+                name="cog-outline"
+                size={22}
+                color={colors.primary.main}
+              />
+            </TouchableOpacity>
+          }
+        />
 
-      {/* Settings Modal */}
-      <Modal
-        visible={showSettings}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowSettings(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
+        <Modal
+          visible={showSettings}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowSettings(false)}
         >
-          <View
-            style={{
-              backgroundColor: 'white',
-              borderRadius: 16,
-              padding: 24,
-              width: '90%',
-              maxWidth: 400,
-              maxHeight: '80%',
-            }}
-          >
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text
-                style={{
-                  fontSize: 20,
-                  fontWeight: 'bold',
-                  color: colors.primary.main,
-                  marginBottom: 16,
-                }}
-              >
-                ⚙️ Pengaturan REAL AI
-              </Text>
-
-              {/* Real AI Toggle */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: 20,
-                  padding: 12,
-                  backgroundColor: '#F5F5F5',
-                  borderRadius: 8,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>
-                    🤖 REAL AI Mode
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-                    Jawaban dinamis seperti ChatGPT/Gemini
-                  </Text>
-                </View>
-                {/* Switch component */}
-                <TouchableOpacity
-                  onPress={() => toggleRealAI(!realAIEnabled)}
-                  style={{
-                    width: 50,
-                    height: 28,
-                    borderRadius: 14,
-                    backgroundColor: realAIEnabled ? '#4CAF50' : '#CCC',
-                    justifyContent: 'center',
-                    padding: 2,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: 12,
-                      backgroundColor: 'white',
-                      alignSelf: realAIEnabled ? 'flex-end' : 'flex-start',
-                    }}
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalTitleRow}>
+                  <MaterialCommunityIcons
+                    name="cog"
+                    size={22}
+                    color={colors.primary.main}
                   />
-                </TouchableOpacity>
-              </View>
+                  <Text style={styles.modalTitle}>Pengaturan REAL AI</Text>
+                </View>
 
-              {/* API Key Section */}
-              <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 8 }}>
-                  🔑 Google Gemini API Key
-                </Text>
+                <View style={styles.toggleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.toggleTitle}>REAL AI Mode</Text>
+                    <Text style={styles.toggleSub}>
+                      Jawaban dinamis seperti ChatGPT/Gemini
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => toggleRealAI(!realAIEnabled)}
+                    style={[
+                      styles.switchTrack,
+                      {
+                        backgroundColor: realAIEnabled
+                          ? colors.status.success
+                          : colors.neutral.gray400,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.switchThumb,
+                        {
+                          alignSelf: realAIEnabled ? 'flex-end' : 'flex-start',
+                        },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.fieldLabel}>Google Gemini API Key</Text>
                 <TextInput
                   value={apiKey}
                   onChangeText={setApiKey}
                   placeholder="Masukkan API key Anda di sini..."
-                  placeholderTextColor="#999"
-                  secureTextEntry={false}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#DDD',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 14,
-                    backgroundColor: '#FAFAFA',
-                    fontFamily: 'monospace',
-                  }}
+                  placeholderTextColor={colors.neutral.gray400}
+                  style={styles.apiInput}
                   multiline
                   numberOfLines={3}
                 />
-                <Text style={{ fontSize: 11, color: '#666', marginTop: 6, lineHeight: 16 }}>
-                  💡 Dapatkan API key gratis di:{'\n'}
-                  <Text style={{ color: colors.primary.main, fontWeight: '600' }}>
-                    https://aistudio.google.com/app/apikey
-                  </Text>
+                <Text style={styles.hint}>
+                  Dapatkan API key gratis di aistudio.google.com/app/apikey
                 </Text>
-              </View>
 
-              {/* Info Box */}
-              <View
-                style={{
-                  backgroundColor: '#E3F2FD',
-                  padding: 12,
-                  borderRadius: 8,
-                  borderLeftWidth: 4,
-                  borderLeftColor: '#2196F3',
-                  marginBottom: 20,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: '#1565C0', lineHeight: 18 }}>
-                  <Text style={{ fontWeight: 'bold' }}>✨ REAL AI Features:</Text>
-                  {'\n'}• Jawaban berbeda setiap kali (tidak template)
-                  {'\n'}• Konteks percakapan lebih alami
-                  {'\n'}• Dapat menjawab pertanyaan kompleks
-                  {'\n'}• Mendukung 5 bahasa (ID/EN/CN/AR/JP)
-                  {'\n'}• Data anak Anda digunakan untuk rekomendasi personal
-                </Text>
-              </View>
-
-              {/* Warning Box */}
-              <View
-                style={{
-                  backgroundColor: '#FFF3E0',
-                  padding: 12,
-                  borderRadius: 8,
-                  borderLeftWidth: 4,
-                  borderLeftColor: '#FFA000',
-                  marginBottom: 20,
-                }}
-              >
-                <Text style={{ fontSize: 11, color: '#E65100', lineHeight: 16 }}>
-                  ⚠️ <Text style={{ fontWeight: 'bold' }}>Penting:</Text>
-                  {'\n'}• API key Anda disimpan lokal di perangkat
-                  {'\n'}• Jika REAL AI dimatikan, sistem akan kembali ke template responses
-                  {'\n'}• Internet diperlukan untuk REAL AI
-                </Text>
-              </View>
-
-              {/* Action Buttons */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <TouchableOpacity
-                  onPress={() => setShowSettings(false)}
-                  style={{
-                    flex: 1,
-                    padding: 14,
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: colors.primary.main,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: colors.primary.main, fontWeight: '600' }}>
-                    Batal
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoBoxText}>
+                    REAL AI: jawaban dinamis, konteks alami, 5 bahasa, rekomendasi
+                    personal dari data anak.
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSaveApiKey}
-                  style={{
-                    flex: 1,
-                    padding: 14,
-                    borderRadius: 8,
-                    backgroundColor: colors.primary.main,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: 'white', fontWeight: '600' }}>
-                    💾 Simpan
+                </View>
+
+                <View style={styles.warnBox}>
+                  <Text style={styles.warnBoxText}>
+                    API key disimpan lokal. Internet diperlukan untuk REAL AI.
+                    Jika dimatikan, sistem kembali ke template.
                   </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <Button
+                    title="Batal"
+                    onPress={() => setShowSettings(false)}
+                    variant="secondary"
+                    size="medium"
+                    style={{ flex: 1 }}
+                    fullWidth={false}
+                  />
+                  <Button
+                    title="Simpan"
+                    onPress={handleSaveApiKey}
+                    size="medium"
+                    style={{ flex: 1 }}
+                    fullWidth={false}
+                  />
+                </View>
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-        {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
@@ -410,50 +343,34 @@ export default function AIAssistantScreen() {
         >
           {messages.map((message) => renderMessage(message))}
 
-          {isLoading && (
+          {isLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary.main} />
               <Text style={styles.loadingText}>Sedang menganalisis...</Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Quick Actions */}
-          {messages.length <= 2 && (
+          {messages.length <= 2 ? (
             <View style={styles.quickActionsContainer}>
-              <Text style={styles.quickActionsTitle}>Pertanyaan Cepat:</Text>
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => handleQuickAction('Analisis pertumbuhan anak saya')}
-              >
-                <Text style={styles.quickActionEmoji}>📊</Text>
-                <Text style={styles.quickActionText}>Analisis Pertumbuhan</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => handleQuickAction('Berikan saran menu bergizi')}
-              >
-                <Text style={styles.quickActionEmoji}>🥗</Text>
-                <Text style={styles.quickActionText}>Saran Nutrisi</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => handleQuickAction('Cara menggunakan IoT device')}
-              >
-                <Text style={styles.quickActionEmoji}>📱</Text>
-                <Text style={styles.quickActionText}>Panduan IoT</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => handleQuickAction('Apa itu stunting?')}
-              >
-                <Text style={styles.quickActionEmoji}>❓</Text>
-                <Text style={styles.quickActionText}>Info Stunting</Text>
-              </TouchableOpacity>
+              <Text style={styles.quickActionsTitle}>Pertanyaan Cepat</Text>
+              {QUICK_ACTIONS.map((qa) => (
+                <TouchableOpacity
+                  key={qa.label}
+                  style={styles.quickActionButton}
+                  onPress={() => handleQuickAction(qa.prompt)}
+                >
+                  <MaterialCommunityIcons
+                    name={qa.icon}
+                    size={20}
+                    color={colors.primary.main}
+                  />
+                  <Text style={styles.quickActionText}>{qa.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          )}
+          ) : null}
         </ScrollView>
 
-        {/* Input */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -477,14 +394,22 @@ export default function AIAssistantScreen() {
             onPress={handleSend}
             disabled={!inputText.trim() || isLoading}
           >
-            <Text style={styles.sendButtonText}>➤</Text>
+            <MaterialCommunityIcons
+              name="send"
+              size={20}
+              color={colors.primary.onPrimary}
+            />
           </TouchableOpacity>
         </View>
 
-        {/* Disclaimer */}
         <View style={styles.disclaimer}>
+          <MaterialCommunityIcons
+            name="alert-circle-outline"
+            size={14}
+            color={colors.text.secondary}
+          />
           <Text style={styles.disclaimerText}>
-            ⚠️ Asisten AI bukan pengganti konsultasi medis profesional
+            Asisten AI bukan pengganti konsultasi medis profesional
           </Text>
         </View>
       </KeyboardAvoidingView>
@@ -495,64 +420,132 @@ export default function AIAssistantScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF', // Solid white background
+    backgroundColor: colors.background.default,
   },
-  header: {
+  settingsButton: {
+    padding: spacing.xs,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26, 28, 28, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCard: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    ...shadows.diffusion,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  modalTitle: {
+    ...typography.styles.headlineLgMobile,
+    fontSize: 20,
+    color: colors.primary.main,
+  },
+  toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.primary.main,
-    borderBottomLeftRadius: borderRadius.xl,
-    borderBottomRightRadius: borderRadius.xl,
-    ...shadows.standard,
+    marginBottom: spacing.lg,
+    padding: spacing.element,
+    backgroundColor: colors.surface.low,
+    borderRadius: borderRadius.lg,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  toggleTitle: {
+    ...typography.styles.buttonText,
+    fontSize: typography.fontSize.md,
+    color: colors.text.onSurface,
   },
-  headerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF', // Solid white
+  toggleSub: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  switchTrack: {
+    width: 50,
+    height: 28,
+    borderRadius: borderRadius.full,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-    borderWidth: 2,
-    borderColor: colors.neutral.white,
+    padding: 2,
   },
-  headerAvatarEmoji: {
-    fontSize: 24,
+  switchThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.lowest,
   },
-  headerTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.white,
+  fieldLabel: {
+    ...typography.styles.labelCaps,
+    color: colors.text.onSurface,
+    marginBottom: spacing.sm,
   },
-  headerSubtitle: {
+  apiInput: {
+    borderWidth: 1,
+    borderColor: colors.border.input,
+    borderRadius: borderRadius.lg,
+    padding: spacing.element,
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.white,
-    opacity: 0.9,
+    backgroundColor: colors.background.default,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    color: colors.text.onSurface,
   },
-  settingsButton: {
-    padding: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: borderRadius.md,
+  hint: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
-  settingsIcon: {
-    fontSize: 24,
+  infoBox: {
+    backgroundColor: colors.background.overlay,
+    padding: spacing.element,
+    borderRadius: borderRadius.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary.main,
+    marginBottom: spacing.md,
+  },
+  infoBoxText: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.xs,
+    color: colors.text.onSurfaceVariant,
+    lineHeight: 18,
+  },
+  warnBox: {
+    backgroundColor: colors.primary.fixed,
+    padding: spacing.element,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.lg,
+  },
+  warnBoxText: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.xs,
+    color: colors.primary.onFixed,
+    lineHeight: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.element,
   },
   messagesContainer: {
     flex: 1,
-    backgroundColor: '#F5F5F5', // Solid light gray background
   },
   messagesContent: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.containerPadding,
+    paddingBottom: 90,
+    gap: spacing.sm,
   },
   messageContainer: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     flexDirection: 'row',
   },
   userMessageContainer: {
@@ -562,66 +555,50 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   avatarContainer: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: borderRadius.full,
-    backgroundColor: '#FFE4F3', // Solid pink background
+    backgroundColor: colors.primary.fixed,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.sm,
-    borderWidth: 2,
-    borderColor: colors.primary.main,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  avatarEmoji: {
-    fontSize: 20,
   },
   messageBubble: {
-    maxWidth: '75%',
+    maxWidth: '78%',
     padding: spacing.md,
     borderRadius: borderRadius.xl,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    ...shadows.soft,
   },
   userBubble: {
-    backgroundColor: '#FF69B4', // Solid pink
+    backgroundColor: colors.chat.userBubble,
     borderBottomRightRadius: borderRadius.sm,
-    borderWidth: 0,
   },
   assistantBubble: {
-    backgroundColor: '#FFFFFF', // Solid white
+    backgroundColor: colors.chat.aiBubble,
     borderBottomLeftRadius: borderRadius.sm,
-    borderWidth: 2,
-    borderColor: '#FFE4F3',
+    ...shadows.diffusion,
   },
   messageText: {
-    fontSize: typography.fontSize.md,
-    lineHeight: typography.fontSize.md * 1.5,
+    ...typography.styles.bodyMd,
   },
   userText: {
-    color: colors.neutral.white,
+    color: colors.chat.userText,
   },
   assistantText: {
-    color: colors.neutral.gray800,
+    color: colors.chat.aiText,
   },
   timestamp: {
     fontSize: typography.fontSize.xs,
     marginTop: spacing.xs,
+    fontFamily: typography.fontFamily.medium,
   },
   userTimestamp: {
-    color: colors.neutral.white,
+    color: colors.chat.userText,
     opacity: 0.8,
     textAlign: 'right',
   },
   assistantTimestamp: {
-    color: colors.neutral.gray500,
+    color: colors.chat.timestamp,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -630,62 +607,51 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginLeft: spacing.sm,
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    fontStyle: 'italic',
+    color: colors.text.secondary,
   },
   quickActionsContainer: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
   quickActionsTitle: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray600,
-    marginBottom: spacing.sm,
+    ...typography.styles.labelCaps,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
   },
   quickActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', // Solid white
+    gap: spacing.sm,
+    backgroundColor: colors.surface.lowest,
     padding: spacing.md,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-    borderWidth: 2,
-    borderColor: colors.neutral.gray300,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  quickActionEmoji: {
-    fontSize: 20,
-    marginRight: spacing.sm,
+    borderRadius: borderRadius.xl,
+    ...shadows.diffusion,
   },
   quickActionText: {
-    fontSize: typography.fontSize.md,
-    color: colors.neutral.gray700,
+    ...typography.styles.bodyMd,
+    color: colors.text.onSurface,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.containerPadding,
     paddingVertical: spacing.sm,
-    backgroundColor: '#FFFFFF', // Solid white
-    borderTopWidth: 2,
-    borderTopColor: colors.neutral.gray300,
+    backgroundColor: colors.surface.lowest,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.divider,
   },
   input: {
     flex: 1,
-    backgroundColor: '#F5F5F5', // Solid light gray
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface.low,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    fontSize: typography.fontSize.md,
+    ...typography.styles.bodyMd,
     maxHeight: 100,
     marginRight: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.neutral.gray300,
+    color: colors.text.onSurface,
   },
   sendButton: {
     width: 48,
@@ -694,29 +660,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.main,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: colors.primary.main,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    ...shadows.primaryGlow,
   },
   sendButtonDisabled: {
     backgroundColor: colors.neutral.gray300,
-  },
-  sendButtonText: {
-    fontSize: 20,
-    color: colors.neutral.white,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   disclaimer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: '#FFF9E6', // Solid light yellow
-    borderTopWidth: 1,
-    borderTopColor: colors.neutral.gray300,
+    paddingVertical: spacing.sm,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.surface.lowest,
   },
   disclaimerText: {
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
-    textAlign: 'center',
+    color: colors.text.secondary,
   },
 });

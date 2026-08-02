@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { Modal, View, Text, StyleSheet, Dimensions } from 'react-native';
-import { colors, typography, shadows, spacing, borderRadius } from '../../theme';
+import {colors, typography, spacing, borderRadius, shadows} from '../../theme';
 import { Card } from './Card';
 import { Button } from './Button';
 
@@ -40,7 +40,7 @@ const { width } = Dimensions.get('window');
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(26, 28, 28, 0.45)',
+    backgroundColor: colors.effects.shadowMedium,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.containerPadding,
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     ...shadows.diffusion,
   },
   icon: {
-    fontSize: 56,
+    fontSize: typography.fontSize.huge,
     marginBottom: spacing.md,
   },
   title: {

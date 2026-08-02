@@ -220,6 +220,7 @@ export type RootStackParamList = {
   Children: undefined;
   Growth: undefined;
   ManualMeasurement: undefined;
+  Measurement: undefined;
   AIAssistant: undefined;
   RecipeList: undefined;
   IoTDevice: undefined;

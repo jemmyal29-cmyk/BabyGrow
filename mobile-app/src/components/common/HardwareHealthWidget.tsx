@@ -16,6 +16,7 @@ import Animated, {
   Easing
 } from 'react-native-reanimated';
 import HapticService from '../../services/HapticService';
+import {colors, typography, spacing, borderRadius, shadows} from '../../theme';
 
 interface HardwareHealthWidgetProps {
   isConnected: boolean;
@@ -96,14 +97,14 @@ export function HardwareHealthWidget({
         >
           <View style={[
             styles.content,
-            { backgroundColor: isConnected ? 'rgba(255, 105, 180, 0.15)' : 'rgba(158, 158, 158, 0.15)' }
+            { backgroundColor: isConnected ? colors.effects.glassPink : colors.effects.shadowLight }
           ]}>
             {/* Status Icon */}
             <View style={styles.iconContainer}>
               <Text style={styles.icon}>{isConnected ? '🔌' : '🔌'}</Text>
               <View style={[
                 styles.statusDot,
-                { backgroundColor: isConnected ? '#4CAF50' : '#9E9E9E' }
+                { backgroundColor: isConnected ? colors.status.success : colors.neutral.gray400 }
               ]} />
             </View>
 
@@ -111,7 +112,7 @@ export function HardwareHealthWidget({
             <View style={styles.statusContainer}>
               <Text style={[
                 styles.statusText,
-                { color: isConnected ? '#FF69B4' : '#757575' }
+                { color: isConnected ? colors.primary.main : colors.neutral.gray500 }
               ]}>
                 {isConnected ? 'Online' : 'Offline'}
               </Text>
@@ -156,7 +157,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     top: 60,
-    right: 16,
+    right: spacing.md,
     zIndex: 1000,
   },
   wrapper: {
@@ -168,9 +169,9 @@ const styles = StyleSheet.create({
     left: -8,
     right: -8,
     bottom: -8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 105, 180, 0.3)',
-    shadowColor: '#FF69B4',
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.effects.primaryGlow,
+    shadowColor: colors.primary.main,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 16,
@@ -178,26 +179,26 @@ const styles = StyleSheet.create({
   },
   glowInner: {
     flex: 1,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 105, 180, 0.2)',
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.effects.glassPink,
   },
   blurContainer: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: colors.effects.glassBlur,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: spacing.element,
     gap: 10,
   },
   iconContainer: {
     position: 'relative',
   },
   icon: {
-    fontSize: 24,
+    fontSize: typography.fontSize.xl,
   },
   statusDot: {
     position: 'absolute',
@@ -205,20 +206,20 @@ const styles = StyleSheet.create({
     right: -2,
     width: 10,
     height: 10,
-    borderRadius: 5,
+    borderRadius: borderRadius.sm,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: colors.neutral.white,
   },
   statusContainer: {
-    gap: 4,
+    gap: spacing.xs,
   },
   statusText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
   },
   details: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   detailItem: {
     flexDirection: 'row',
@@ -226,25 +227,25 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   detailIcon: {
-    fontSize: 10,
+    fontSize: typography.fontSize.xs,
   },
   detailText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#757575',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.neutral.gray500,
   },
   retryButton: {
-    marginTop: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(255, 105, 180, 0.2)',
-    borderRadius: 8,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.effects.glassPink,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255, 105, 180, 0.3)',
+    borderColor: colors.border.glass,
   },
   retryText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#FF69B4',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary.main,
   },
 });

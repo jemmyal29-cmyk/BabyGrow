@@ -1,5 +1,5 @@
 /**
- * Profile Screen - UIGM 2026 with Childhood Gallery Premium Feature
+ * Profile Screen — Settings (desainuiux.md) + Childhood Gallery
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,79 +10,97 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
   Image,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, typography, spacing, borderRadius } from '../theme';
-import { useAuthActions } from '../store/authStore';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useAuth, useAuthActions, useIsAdmin } from '../store/authStore';
 import { useTheme } from '../theme/ThemeContext';
 import { ChildhoodGallery, ChildhoodPhoto } from '../types';
-import { ScreenHeader, Button } from '../components/common';
+import { ScreenHeader } from '../components/common';
 import HapticService from '../services/HapticService';
+import { ageLabelFromDob, useChildren } from '../hooks/useChildren';
+import { showAlert } from '../utils/alert';
 
 const { width } = Dimensions.get('window');
-const PHOTO_SIZE = (width - 64) / 3; // 3 photos per row with margins
+const PHOTO_SIZE = (width - 64) / 3;
+
+type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 export default function ProfileScreen({ navigation }: any) {
-  const { logout } = useAuthActions();
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { user } = useAuth();
+  const isAdmin = useIsAdmin();
+  const { logout, requestPasswordReset } = useAuthActions();
+  const { isDark, toggleTheme } = useTheme();
+  const { data: children = [] } = useChildren(
+    isAdmin ? { fetchAll: true } : { parentId: user?.id }
+  );
+  const roleLabel =
+    user?.role === 'ROLE_ADMIN'
+      ? 'Petugas / Perawat'
+      : user?.role === 'ROLE_USER'
+        ? 'Orang Tua'
+        : 'Akun belum aktif';
   const [showPersonalInfo, setShowPersonalInfo] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
   const [showChildren, setShowChildren] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
-  const [showGallery, setShowGallery] = useState(true); // Show by default
+  const [showGallery, setShowGallery] = useState(true);
   const [childhoodPhotos, setChildhoodPhotos] = useState<(ChildhoodPhoto | null)[]>([
-    null, null, null, null, null
+    null, null, null, null, null,
   ]);
 
-  // Load saved photos on mount
+  const galleryKey = user?.id
+    ? `@babygrow/childhood_gallery_${user.id}`
+    : '@babygrow/childhood_gallery';
+
   useEffect(() => {
-    loadChildhoodPhotos();
-  }, []);
-
-  // Load photos from AsyncStorage
-  const loadChildhoodPhotos = async () => {
-    try {
-      const savedPhotos = await AsyncStorage.getItem('childhood_gallery');
-      if (savedPhotos) {
-        const gallery: ChildhoodGallery = JSON.parse(savedPhotos);
-        setChildhoodPhotos(gallery.photos);
+    let cancelled = false;
+    (async () => {
+      try {
+        const savedPhotos = await AsyncStorage.getItem(galleryKey);
+        if (cancelled) return;
+        if (savedPhotos) {
+          const gallery: ChildhoodGallery = JSON.parse(savedPhotos);
+          setChildhoodPhotos(gallery.photos);
+        } else {
+          setChildhoodPhotos([null, null, null, null, null]);
+        }
+      } catch (error) {
+        console.error('Failed to load childhood photos:', error);
       }
-    } catch (error) {
-      console.error('Failed to load childhood photos:', error);
-    }
-  };
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [galleryKey]);
 
-  // Save photos to AsyncStorage
   const saveChildhoodPhotos = async (photos: (ChildhoodPhoto | null)[]) => {
     try {
       const gallery: ChildhoodGallery = {
-        userId: 'current_user', // Replace with actual user ID
-        photos: photos
+        userId: user?.id || 'anonymous',
+        photos: photos,
       };
-      await AsyncStorage.setItem('childhood_gallery', JSON.stringify(gallery));
+      await AsyncStorage.setItem(galleryKey, JSON.stringify(gallery));
       setChildhoodPhotos(photos);
     } catch (error) {
       console.error('Failed to save childhood photos:', error);
-      Alert.alert('Error', 'Gagal menyimpan foto');
+      showAlert('Error', 'Gagal menyimpan foto');
     }
   };
 
-  // Pick image from gallery
   const pickImage = async (slot: 1 | 2 | 3 | 4 | 5) => {
     try {
-      // Request permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Izinkan akses ke galeri untuk menambah foto');
+        showAlert('Permission Denied', 'Izinkan akses ke galeri untuk menambah foto');
         return;
       }
 
-      // Pick image
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -95,7 +113,7 @@ export default function ProfileScreen({ navigation }: any) {
           id: `photo_${Date.now()}`,
           uri: result.assets[0].uri,
           dateAdded: new Date().toISOString(),
-          slot: slot
+          slot: slot,
         };
 
         const updatedPhotos = [...childhoodPhotos];
@@ -104,13 +122,12 @@ export default function ProfileScreen({ navigation }: any) {
       }
     } catch (error) {
       console.error('Image picker error:', error);
-      Alert.alert('Error', 'Gagal memilih foto');
+      showAlert('Error', 'Gagal memilih foto');
     }
   };
 
-  // Remove photo
   const removePhoto = (slot: 1 | 2 | 3 | 4 | 5) => {
-    Alert.alert(
+    showAlert(
       'Hapus Foto',
       'Apakah Anda yakin ingin menghapus foto ini?',
       [
@@ -122,215 +139,288 @@ export default function ProfileScreen({ navigation }: any) {
             const updatedPhotos = [...childhoodPhotos];
             updatedPhotos[slot - 1] = null;
             await saveChildhoodPhotos(updatedPhotos);
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  const handleFeatureClick = (feature: string, status: string) => {
-    Alert.alert(
-      `${feature}`,
-      `Status: ${status}\n\nFitur ini sedang dalam perbaikan dan akan segera tersedia.`,
-      [{ text: 'OK' }]
+  const handlePasswordReset = () => {
+    if (!user?.email) {
+      showAlert('Error', 'Email akun tidak tersedia');
+      return;
+    }
+    showAlert(
+      'Reset Password',
+      `Kirim link reset password ke ${user.email}?`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Kirim',
+          onPress: async () => {
+            try {
+              await HapticService.buttonPress();
+              await requestPasswordReset(user.email);
+              showAlert(
+                'Email Terkirim',
+                'Cek inbox (dan folder spam) untuk tautan reset kata sandi.'
+              );
+            } catch (error: unknown) {
+              const message =
+                error instanceof Error ? error.message : 'Gagal mengirim email reset';
+              showAlert('Gagal', message);
+            }
+          },
+        },
+      ]
     );
   };
+
+  const navigateStack = (screen: string, params?: object) => {
+    void HapticService.buttonPress();
+    const parent = navigation.getParent();
+    if (parent) {
+      parent.navigate(screen, params);
+    } else {
+      navigation.navigate(screen, params);
+    }
+  };
+
+  const renderMenuIcon = (name: IconName, destructive = false) => (
+    <View
+      style={[
+        styles.menuIconContainer,
+        destructive && styles.menuIconContainerDestructive,
+      ]}
+    >
+      <MaterialCommunityIcons
+        name={name}
+        size={24}
+        color={destructive ? colors.status.error : colors.primary.main}
+      />
+    </View>
+  );
+
+  const renderChevron = (expanded?: boolean) => (
+    <MaterialCommunityIcons
+      name={expanded === undefined ? 'chevron-right' : expanded ? 'chevron-down' : 'chevron-right'}
+      size={22}
+      color={colors.text.disabled}
+    />
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScreenHeader title="Profil" subtitle="Akun & preferensi" />
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header Profile */}
-        <View style={styles.header}>
+        {/* Profile header card */}
+        <View style={styles.headerCard}>
           <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>👤</Text>
+            <MaterialCommunityIcons
+              name="account-circle"
+              size={72}
+              color={colors.primary.main}
+            />
           </View>
-          <Text style={styles.userName}>Ibu Sari</Text>
-          <Text style={styles.userEmail}>user@babygrow.app</Text>
+          <Text style={styles.userName}>{user?.name || 'Pengguna'}</Text>
+          <Text style={styles.userEmail}>{user?.email || '—'}</Text>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleText}>👤 Pengguna (User)</Text>
+            <MaterialCommunityIcons
+              name={user?.role === 'ROLE_ADMIN' ? 'shield-account' : 'account'}
+              size={14}
+              color={colors.primary.main}
+            />
+            <Text style={styles.roleText}>{roleLabel}</Text>
           </View>
         </View>
 
-        {/* Menu Items */}
+        {/* Pengaturan Akun */}
         <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Pengaturan Akun</Text>
 
-          {/* Informasi Pribadi */}
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => setShowPersonalInfo(!showPersonalInfo)}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>👤</Text>
-            </View>
+            {renderMenuIcon('account')}
             <View style={styles.menuContent}>
               <View style={styles.menuHeader}>
                 <Text style={styles.menuTitle}>Informasi Pribadi</Text>
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>⚠️ Perbaikan Query</Text>
+                  <Text style={styles.statusText}>Aktif</Text>
                 </View>
               </View>
               <Text style={styles.menuDesc}>Kelola nama, email, no. HP, dan alamat</Text>
             </View>
-            <Text style={styles.chevron}>{showPersonalInfo ? '▼' : '▶'}</Text>
+            {renderChevron(showPersonalInfo)}
           </TouchableOpacity>
 
           {showPersonalInfo && (
             <View style={styles.expandedContent}>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Nama Lengkap:</Text>
-                <Text style={styles.infoValue}>Ibu Sari Rahayu</Text>
+                <Text style={styles.infoValue}>{user?.name || '—'}</Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Email:</Text>
-                <Text style={styles.infoValue}>user@babygrow.app</Text>
+                <Text style={styles.infoValue}>{user?.email || '—'}</Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>No. HP:</Text>
-                <Text style={styles.infoValue}>+62 812-3456-7890</Text>
+                <Text style={styles.infoValue}>{user?.phone || '—'}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Alamat:</Text>
-                <Text style={styles.infoValue}>Jl. Sehat No. 123, Jakarta</Text>
+                <Text style={styles.infoLabel}>Lokasi:</Text>
+                <Text style={styles.infoValue}>
+                  {[user?.location?.puskesmas, user?.location?.city]
+                    .filter(Boolean)
+                    .join(', ') || '—'}
+                </Text>
               </View>
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={() => handleFeatureClick('Edit Profil', 'Perbaikan Query Database')}
-              >
-                <Text style={styles.editButtonText}>✏️ Edit Informasi</Text>
-              </TouchableOpacity>
             </View>
           )}
 
-          {/* Keamanan & Privasi */}
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => setShowSecurity(!showSecurity)}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>🔒</Text>
-            </View>
+            {renderMenuIcon('lock')}
             <View style={styles.menuContent}>
               <View style={styles.menuHeader}>
                 <Text style={styles.menuTitle}>Keamanan & Privasi</Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>⚠️ Perbaikan Link</Text>
+                <View style={[styles.statusBadge, { backgroundColor: colors.status.success }]}>
+                  <Text style={[styles.statusText, { color: colors.text.inverse }]}>Aktif</Text>
                 </View>
               </View>
-              <Text style={styles.menuDesc}>Ubah password & verifikasi 2 faktor</Text>
+              <Text style={styles.menuDesc}>Reset kata sandi lewat email</Text>
             </View>
-            <Text style={styles.chevron}>{showSecurity ? '▼' : '▶'}</Text>
+            {renderChevron(showSecurity)}
           </TouchableOpacity>
 
           {showSecurity && (
             <View style={styles.expandedContent}>
               <TouchableOpacity
                 style={styles.securityOption}
-                onPress={() => handleFeatureClick('Ubah Password', 'Enkripsi sedang ditingkatkan')}
+                onPress={handlePasswordReset}
+                activeOpacity={0.85}
               >
-                <Text style={styles.securityIcon}>🔑</Text>
+                <MaterialCommunityIcons
+                  name="key"
+                  size={22}
+                  color={colors.primary.main}
+                  style={styles.securityIcon}
+                />
                 <View style={styles.securityContent}>
-                  <Text style={styles.securityTitle}>Ubah Password</Text>
-                  <Text style={styles.securityDesc}>Terakhir diubah: 15 Des 2025</Text>
+                  <Text style={styles.securityTitle}>Reset Password</Text>
+                  <Text style={styles.securityDesc}>
+                    Kirim link reset ke {user?.email || 'email akun'}
+                  </Text>
                 </View>
-                <Text style={styles.chevron}>▶</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.securityOption}
-                onPress={() => handleFeatureClick('Verifikasi 2 Faktor', 'Integrasi OTP dalam proses')}
-              >
-                <Text style={styles.securityIcon}>📱</Text>
-                <View style={styles.securityContent}>
-                  <Text style={styles.securityTitle}>Verifikasi Dua Faktor (2FA)</Text>
-                  <Text style={styles.securityDesc}>Status: Belum aktif</Text>
-                </View>
-                <Text style={styles.chevron}>▶</Text>
+                {renderChevron()}
               </TouchableOpacity>
 
               <View style={styles.securityInfo}>
-                <Text style={styles.securityInfoIcon}>🔐</Text>
+                <MaterialCommunityIcons
+                  name="shield-lock"
+                  size={20}
+                  color={colors.primary.main}
+                  style={styles.securityInfoIcon}
+                />
                 <Text style={styles.securityInfoText}>
-                  Data Anda dilindungi dengan enkripsi AES-256 dan disimpan sesuai standar ISO 27001
+                  Keamanan dikelola sistem login. Sesi berakhir saat Anda keluar.
                 </Text>
               </View>
             </View>
           )}
 
-          {/* Kelola Anak */}
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => setShowChildren(!showChildren)}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>👶</Text>
-            </View>
+            {renderMenuIcon('baby-face-outline')}
             <View style={styles.menuContent}>
               <View style={styles.menuHeader}>
                 <Text style={styles.menuTitle}>Kelola Anak</Text>
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>⚠️ Perbaikan Database</Text>
+                  <Text style={styles.statusText}>Aktif</Text>
                 </View>
               </View>
               <Text style={styles.menuDesc}>Daftar anak yang terhubung dengan akun</Text>
             </View>
-            <Text style={styles.chevron}>{showChildren ? '▼' : '▶'}</Text>
+            {renderChevron(showChildren)}
           </TouchableOpacity>
 
           {showChildren && (
             <View style={styles.expandedContent}>
-              <View style={styles.childCard}>
-                <Text style={styles.childIcon}>👶</Text>
-                <View style={styles.childInfo}>
-                  <Text style={styles.childName}>Zaki Pratama</Text>
-                  <Text style={styles.childDetails}>Laki-laki • 18 bulan</Text>
-                  <Text style={styles.childStatus}>✅ Data lengkap</Text>
-                </View>
-              </View>
-
-              <View style={styles.childCard}>
-                <Text style={styles.childIcon}>👧</Text>
-                <View style={styles.childInfo}>
-                  <Text style={styles.childName}>Aisyah Putri</Text>
-                  <Text style={styles.childDetails}>Perempuan • 6 bulan</Text>
-                  <Text style={styles.childStatus}>✅ Data lengkap</Text>
-                </View>
-              </View>
-
+              {children.length === 0 ? (
+                <Text style={styles.emptyChildren}>Belum ada data anak.</Text>
+              ) : (
+                children.map((child) => (
+                  <TouchableOpacity
+                    key={child.id}
+                    style={styles.childCard}
+                    onPress={() => navigateStack('ChildDetail', { childId: child.id })}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons
+                      name={child.gender === 'female' ? 'face-woman' : 'face-man'}
+                      size={32}
+                      color={colors.primary.main}
+                      style={styles.childIcon}
+                    />
+                    <View style={styles.childInfo}>
+                      <Text style={styles.childName}>{child.name}</Text>
+                      <Text style={styles.childDetails}>
+                        {child.gender === 'female' ? 'Perempuan' : 'Laki-laki'} ·{' '}
+                        {ageLabelFromDob(child.date_of_birth)}
+                      </Text>
+                    </View>
+                    {renderChevron()}
+                  </TouchableOpacity>
+                ))
+              )}
               <TouchableOpacity
                 style={styles.addChildButton}
-                onPress={() => navigation.navigate('Children')}
-                activeOpacity={0.7}
+                onPress={() => navigateStack('AddChild')}
+                activeOpacity={0.85}
               >
-                <Text style={styles.addChildText}>+ Tambah Anak Baru</Text>
+                <MaterialCommunityIcons
+                  name="plus"
+                  size={18}
+                  color={colors.text.inverse}
+                />
+                <Text style={styles.addChildText}>Tambah Anak</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
 
-        {/* 🆕 PREMIUM FEATURE: Childhood Memories Gallery */}
+        {/* Childhood Gallery */}
         <View style={styles.menuSection}>
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => setShowGallery(!showGallery)}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>📸</Text>
-            </View>
+            {renderMenuIcon('image-multiple')}
             <View style={styles.menuContent}>
               <View style={styles.menuHeader}>
                 <Text style={styles.menuTitle}>Kenangan Masa Kecil</Text>
-                <View style={[styles.statusBadge, { backgroundColor: '#FFD700' }]}>
-                  <Text style={[styles.statusText, { color: '#000' }]}>✨ Premium</Text>
+                <View style={[styles.statusBadge, { backgroundColor: colors.status.warning }]}>
+                  <Text style={[styles.statusText, { color: colors.neutral.black }]}>
+                    Premium
+                  </Text>
                 </View>
               </View>
               <Text style={styles.menuDesc}>Galeri 5 foto kenangan istimewa</Text>
             </View>
-            <Text style={styles.chevron}>{showGallery ? '▼' : '▶'}</Text>
+            {renderChevron(showGallery)}
           </TouchableOpacity>
 
           {showGallery && (
@@ -347,19 +437,31 @@ export default function ProfileScreen({ navigation }: any) {
                     <TouchableOpacity
                       key={`photo-slot-${slot}`}
                       style={styles.photoSlot}
-                      onPress={() => photo ? removePhoto(slot as 1 | 2 | 3 | 4 | 5) : pickImage(slot as 1 | 2 | 3 | 4 | 5)}
+                      onPress={() =>
+                        photo
+                          ? removePhoto(slot as 1 | 2 | 3 | 4 | 5)
+                          : pickImage(slot as 1 | 2 | 3 | 4 | 5)
+                      }
                       activeOpacity={0.7}
                     >
                       {photo ? (
                         <>
                           <Image source={{ uri: photo.uri }} style={styles.photoImage} />
                           <View style={styles.photoOverlay}>
-                            <Text style={styles.photoRemoveIcon}>🗑️</Text>
+                            <MaterialCommunityIcons
+                              name="delete"
+                              size={28}
+                              color={colors.text.inverse}
+                            />
                           </View>
                         </>
                       ) : (
                         <View style={styles.photoPlaceholder}>
-                          <Text style={styles.photoPlaceholderIcon}>📷</Text>
+                          <MaterialCommunityIcons
+                            name="camera-plus"
+                            size={28}
+                            color={colors.text.secondary}
+                          />
                           <Text style={styles.photoPlaceholderText}>Tambah{'\n'}Foto</Text>
                         </View>
                       )}
@@ -369,9 +471,15 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
 
               <View style={styles.galleryInfo}>
-                <Text style={styles.galleryInfoIcon}>💡</Text>
+                <MaterialCommunityIcons
+                  name="information-outline"
+                  size={18}
+                  color={colors.primary.main}
+                  style={styles.galleryInfoIcon}
+                />
                 <Text style={styles.galleryInfoText}>
-                  Foto tersimpan lokal di perangkat Anda dan tidak akan hilang saat aplikasi ditutup
+                  Foto tersimpan lokal di perangkat Anda dan tidak akan hilang saat aplikasi
+                  ditutup
                 </Text>
               </View>
             </View>
@@ -382,20 +490,33 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Preferensi</Text>
 
-          {/* Mode Gelap */}
           <View style={styles.menuItem}>
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>🌙</Text>
-            </View>
+            {renderMenuIcon('weather-night')}
             <View style={styles.menuContent}>
               <View style={styles.menuHeader}>
                 <Text style={styles.menuTitle}>Mode Gelap</Text>
-                <View style={[styles.statusBadge, { backgroundColor: '#4CAF50' }]}>
-                  <Text style={styles.statusText}>✨ Aktif</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: isDark
+                        ? colors.status.success
+                        : colors.neutral.gray300,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      isDark && { color: colors.text.inverse },
+                    ]}
+                  >
+                    {isDark ? 'On' : 'Off'}
+                  </Text>
                 </View>
               </View>
               <Text style={styles.menuDesc}>
-                {isDark ? 'Mode gelap aktif - Deep Charcoal & Midnight Pink' : 'Mode terang aktif - Tap untuk ubah tema'}
+                {isDark ? 'Tema gelap aktif' : 'Tema terang aktif'}
               </Text>
             </View>
             <Switch
@@ -406,98 +527,171 @@ export default function ProfileScreen({ navigation }: any) {
             />
           </View>
 
-          {/* Bahasa */}
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => navigation.navigate('Help')}
+            onPress={() =>
+              showAlert(
+                'Bahasa',
+                'Saat ini aplikasi memakai Bahasa Indonesia. Pilih Help & FAQ untuk panduan multi-bahasa.'
+              )
+            }
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>🌐</Text>
-            </View>
+            {renderMenuIcon('web')}
             <View style={styles.menuContent}>
               <Text style={styles.menuTitle}>Bahasa / Language</Text>
-              <Text style={styles.menuDesc}>Indonesia (5 bahasa tersedia)</Text>
+              <Text style={styles.menuDesc}>Indonesia (aktif)</Text>
             </View>
-            <Text style={styles.chevron}>▶</Text>
+            {renderChevron()}
           </TouchableOpacity>
+        </View>
+
+        {/* Pintasan */}
+        <View style={styles.menuSection}>
+          <Text style={styles.sectionTitle}>Pintasan</Text>
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => navigateStack('Guide')}
+            activeOpacity={0.85}
+          >
+            {renderMenuIcon('book-open-page-variant')}
+            <View style={styles.menuContent}>
+              <Text style={styles.menuTitle}>Panduan Penggunaan</Text>
+              <Text style={styles.menuDesc}>Alur fitur utama BabyGrow</Text>
+            </View>
+            {renderChevron()}
+          </TouchableOpacity>
+
+          {!isAdmin ? (
+            <>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigateStack('RecipeList')}
+                activeOpacity={0.85}
+              >
+                {renderMenuIcon('food-apple')}
+                <View style={styles.menuContent}>
+                  <Text style={styles.menuTitle}>Resep MBG</Text>
+                  <Text style={styles.menuDesc}>Resep bergizi dengan cara memasak</Text>
+                </View>
+                {renderChevron()}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigateStack('AIAssistant')}
+                activeOpacity={0.85}
+              >
+                {renderMenuIcon('robot-outline')}
+                <View style={styles.menuContent}>
+                  <Text style={styles.menuTitle}>BabyGrow AI</Text>
+                  <Text style={styles.menuDesc}>Chat & saran nutrisi</Text>
+                </View>
+                {renderChevron()}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigateStack('ManualMeasurement')}
+                activeOpacity={0.85}
+              >
+                {renderMenuIcon('scale-bathroom')}
+                <View style={styles.menuContent}>
+                  <Text style={styles.menuTitle}>Ukur Manual</Text>
+                  <Text style={styles.menuDesc}>Simpan hasil pengukuran anak</Text>
+                </View>
+                {renderChevron()}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigateStack('AIVisionStadiometer')}
+                activeOpacity={0.85}
+              >
+                {renderMenuIcon('camera')}
+                <View style={styles.menuContent}>
+                  <Text style={styles.menuTitle}>AI Vision</Text>
+                  <Text style={styles.menuDesc}>Estimasi tinggi lewat kamera AI</Text>
+                </View>
+                {renderChevron()}
+              </TouchableOpacity>
+            </>
+          ) : null}
         </View>
 
         {/* Lainnya */}
         <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Lainnya</Text>
 
-          {/* Bantuan */}
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => navigation.navigate('Help')}
+            onPress={() => navigateStack('Help')}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>💬</Text>
-            </View>
+            {renderMenuIcon('help-circle-outline')}
             <View style={styles.menuContent}>
               <Text style={styles.menuTitle}>Bantuan & FAQ</Text>
               <Text style={styles.menuDesc}>Panduan penggunaan aplikasi</Text>
             </View>
-            <Text style={styles.chevron}>▶</Text>
+            {renderChevron()}
           </TouchableOpacity>
 
-          {/* Tentang Aplikasi */}
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => setShowAbout(!showAbout)}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>ℹ️</Text>
-            </View>
+            {renderMenuIcon('information-outline')}
             <View style={styles.menuContent}>
               <View style={styles.menuHeader}>
                 <Text style={styles.menuTitle}>Tentang Aplikasi</Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>⚠️ Konten Kosong</Text>
+                <View style={[styles.statusBadge, { backgroundColor: colors.status.success }]}>
+                  <Text style={[styles.statusText, { color: colors.text.inverse }]}>
+                    v3.0.0
+                  </Text>
                 </View>
               </View>
-              <Text style={styles.menuDesc}>Versi 1.0.0 • Build 2026.01.08</Text>
+              <Text style={styles.menuDesc}>BabyGrow · UIGM 2026</Text>
             </View>
-            <Text style={styles.chevron}>{showAbout ? '▼' : '▶'}</Text>
+            {renderChevron(showAbout)}
           </TouchableOpacity>
 
           {showAbout && (
             <View style={styles.expandedContent}>
               <Text style={styles.aboutTitle}>BabyGrow</Text>
-              <Text style={styles.aboutVersion}>Versi 1.0.0 (Build 2026.01.08)</Text>
-              
-              <Text style={styles.aboutSectionTitle}>🎯 Visi Kami</Text>
+              <Text style={styles.aboutVersion}>Versi 3.0.0 · Expo SDK 54</Text>
+
+              <Text style={styles.aboutSectionTitle}>Visi Kami</Text>
               <Text style={styles.aboutText}>
-                BabyGrow adalah aplikasi pemantauan pertumbuhan anak berbasis AI yang bertujuan mencegah stunting di Indonesia. Kami menggunakan standar WHO dan teknologi IoT untuk memberikan monitoring real-time yang akurat.
+                BabyGrow memantau pertumbuhan balita berbasis standar WHO dan integrasi IoT
+                untuk mendukung pencegahan stunting di Indonesia.
               </Text>
 
-              <Text style={styles.aboutSectionTitle}>✨ Fitur Unggulan</Text>
+              <Text style={styles.aboutSectionTitle}>Fitur Utama</Text>
               <Text style={styles.aboutText}>
-                • AI Analisis dengan WHO Z-Score{'\n'}
-                • Grafik Pertumbuhan Interaktif{'\n'}
-                • Jadwal Imunisasi Lengkap{'\n'}
-                • Integrasi IoT Device{'\n'}
-                • Rekomendasi Nutrisi Personal
+                • Standar pertumbuhan WHO{'\n'}
+                • Pengukuran manual, alat pintar, dan kamera AI{'\n'}
+                • Dashboard orang tua & petugas{'\n'}
+                • Resep MBG & asisten AI{'\n'}
+                • Sambungkan alat ukur BabyGrow
               </Text>
 
-              <Text style={styles.aboutSectionTitle}>🔒 Keamanan Data</Text>
+              <Text style={styles.aboutSectionTitle}>Data & Keamanan</Text>
               <Text style={styles.aboutText}>
-                • Enkripsi End-to-End (AES-256){'\n'}
-                • Sertifikasi ISO 27001{'\n'}
-                • GDPR & Compliance Indonesia{'\n'}
-                • Backup Otomatis Harian
+                • Login aman untuk orang tua & petugas{'\n'}
+                • Pengukuran bisa antre saat offline{'\n'}
+                • Akun: Orang Tua atau Petugas/Perawat
               </Text>
 
-              <Text style={styles.aboutSectionTitle}>📞 Kontak</Text>
+              <Text style={styles.aboutSectionTitle}>Kontak</Text>
               <Text style={styles.aboutText}>
-                Email: support@babygrow.app{'\n'}
-                Website: www.babygrow.app{'\n'}
+                Proyek akademik · Universitas Indo Global Mandiri{'\n'}
                 © 2026 BabyGrow Team
               </Text>
 
-              {/* UIGM Footer */}
               <View style={styles.uigmFooter}>
-                <Text style={styles.uigmTitle}>🎓 Developed by</Text>
+                <Text style={styles.uigmTitle}>Developed by</Text>
                 <Text style={styles.uigmAuthor}>Jemi Altio</Text>
                 <Text style={styles.uigmDepartment}>Sistem Komputer</Text>
                 <Text style={styles.uigmUniversity}>Universitas Indo Global Mandiri</Text>
@@ -506,49 +700,46 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* Logout */}
           <TouchableOpacity
             style={[styles.menuItem, styles.logoutItem]}
             onPress={() => {
-              Alert.alert(
-                'Logout',
-                'Apakah Anda yakin ingin keluar?',
-                [
-                  { text: 'Batal', style: 'cancel' },
-                  {
-                    text: 'Logout',
-                    style: 'destructive',
-                    onPress: async () => {
-                      await HapticService.buttonPress();
-                      await logout();
-                    },
+              showAlert('Logout', 'Apakah Anda yakin ingin keluar?', [
+                { text: 'Batal', style: 'cancel' },
+                {
+                  text: 'Logout',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await HapticService.buttonPress();
+                    await logout();
                   },
-                ]
-              );
+                },
+              ]);
             }}
+            activeOpacity={0.85}
           >
-            <View style={styles.menuIconContainer}>
-              <Text style={styles.menuIcon}>🚪</Text>
-            </View>
+            {renderMenuIcon('logout', true)}
             <View style={styles.menuContent}>
               <Text style={[styles.menuTitle, styles.logoutText]}>Keluar</Text>
             </View>
-            <Text style={styles.chevron}>▶</Text>
+            {renderChevron()}
           </TouchableOpacity>
         </View>
 
-        {/* UIGM Footer - Always Visible */}
         <View style={styles.footerContainer}>
           <View style={styles.uigmFooter}>
-            <Text style={styles.uigmTitle}>🎓 Developed by</Text>
+            <MaterialCommunityIcons
+              name="school"
+              size={28}
+              color={colors.primary.main}
+              style={{ marginBottom: spacing.xs }}
+            />
+            <Text style={styles.uigmTitle}>Developed by</Text>
             <Text style={styles.uigmAuthor}>Jemi Altio</Text>
             <Text style={styles.uigmDepartment}>Sistem Komputer</Text>
             <Text style={styles.uigmUniversity}>Universitas Indo Global Mandiri</Text>
             <Text style={styles.uigmYear}>© 2026</Text>
           </View>
         </View>
-
-        <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -560,46 +751,47 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.default,
   },
   scrollContent: {
-    paddingBottom: 100, // Extra padding untuk bottom tabs
+    paddingBottom: 120,
   },
-  header: {
-    backgroundColor: colors.primary.main,
+  headerCard: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
     padding: spacing.xl,
     alignItems: 'center',
+    ...shadows.diffusion,
   },
   avatarContainer: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.neutral.white,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary.fixed,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  avatarText: {
-    fontSize: 40,
-  },
   userName: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.white,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
     marginBottom: spacing.xs,
   },
   userEmail: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.white,
-    opacity: 0.9,
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
     marginBottom: spacing.sm,
   },
   roleBadge: {
-    backgroundColor: colors.neutral.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary.fixed,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
   },
   roleText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semiBold,
+    ...typography.styles.labelCaps,
     color: colors.primary.main,
   },
   menuSection: {
@@ -607,38 +799,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   sectionTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray600,
+    ...typography.styles.labelCaps,
+    color: colors.text.secondary,
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
+    paddingHorizontal: spacing.xs,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', // Solid white
+    backgroundColor: colors.surface.lowest,
     padding: spacing.md,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     marginBottom: spacing.sm,
-    borderWidth: 2,
-    borderColor: colors.neutral.gray300,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 5,
+    ...shadows.diffusion,
   },
   menuIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.neutral.gray100,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.primary.fixed,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.sm,
   },
-  menuIcon: {
-    fontSize: 24,
+  menuIconContainerDestructive: {
+    backgroundColor: 'rgba(186, 26, 26, 0.1)',
   },
   menuContent: {
     flex: 1,
@@ -647,76 +832,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.xs,
+    flexWrap: 'wrap',
   },
   menuTitle: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.text.onSurface,
   },
   menuDesc: {
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
+    opacity: 0.8,
   },
   statusBadge: {
-    backgroundColor: '#FFF3CD',
+    backgroundColor: colors.primary.fixed,
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
     borderRadius: borderRadius.sm,
     marginLeft: spacing.xs,
   },
   statusText: {
-    fontSize: 10,
-    color: colors.neutral.gray700,
-  },
-  chevron: {
-    fontSize: 16,
-    color: colors.neutral.gray400,
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.primary.onFixedVariant,
   },
   expandedContent: {
-    backgroundColor: '#F5F5F5', // Solid light gray
+    backgroundColor: colors.surface.lowest,
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.xl,
     marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.neutral.gray300,
+    ...shadows.soft,
   },
   infoRow: {
     marginBottom: spacing.sm,
   },
   infoLabel: {
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     marginBottom: spacing.xs,
   },
   infoValue: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
-  },
-  editButton: {
-    backgroundColor: colors.primary.main,
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  editButtonText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.white,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.onSurface,
   },
   securityOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', // Solid white
+    backgroundColor: colors.surface.low,
     padding: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.neutral.gray300,
   },
   securityIcon: {
-    fontSize: 24,
     marginRight: spacing.sm,
   },
   securityContent: {
@@ -724,44 +894,47 @@ const styles = StyleSheet.create({
   },
   securityTitle: {
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.onSurface,
     marginBottom: spacing.xs,
   },
   securityDesc: {
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
   },
   securityInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.primary.fixed,
     padding: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     marginTop: spacing.sm,
   },
   securityInfoIcon: {
-    fontSize: 20,
     marginRight: spacing.xs,
   },
   securityInfoText: {
     flex: 1,
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray700,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.onSurfaceVariant,
     lineHeight: 16,
+  },
+  emptyChildren: {
+    color: colors.text.secondary,
+    padding: spacing.sm,
+    fontFamily: typography.fontFamily.medium,
   },
   childCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF', // Solid white
+    backgroundColor: colors.surface.low,
     padding: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     marginBottom: spacing.sm,
-    borderWidth: 2,
-    borderColor: colors.neutral.gray300,
   },
   childIcon: {
-    fontSize: 32,
     marginRight: spacing.sm,
   },
   childInfo: {
@@ -769,54 +942,55 @@ const styles = StyleSheet.create({
   },
   childName: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.onSurface,
     marginBottom: spacing.xs,
   },
   childDetails: {
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
-    marginBottom: spacing.xs,
-  },
-  childStatus: {
-    fontSize: typography.fontSize.xs,
-    color: colors.status.success,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
   },
   addChildButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
     backgroundColor: colors.primary.main,
     padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
+    borderRadius: borderRadius.lg,
     marginTop: spacing.sm,
   },
   addChildText: {
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.white,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.inverse,
   },
   aboutTitle: {
     fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
+    fontFamily: typography.fontFamily.bold,
     color: colors.primary.main,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   aboutVersion: {
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
   aboutSectionTitle: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.text.onSurface,
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
   aboutText: {
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray700,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     lineHeight: 20,
     marginBottom: spacing.sm,
   },
@@ -826,17 +1000,17 @@ const styles = StyleSheet.create({
   logoutText: {
     color: colors.status.error,
   },
-  // Childhood Gallery Styles
   gallerySectionTitle: {
     fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
+    fontFamily: typography.fontFamily.bold,
     color: colors.primary.main,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   galleryDesc: {
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
@@ -860,93 +1034,88 @@ const styles = StyleSheet.create({
   },
   photoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: colors.effects.shadowMedium,
     justifyContent: 'center',
     alignItems: 'center',
     opacity: 0.8,
   },
-  photoRemoveIcon: {
-    fontSize: 32,
-  },
   photoPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.neutral.gray200,
+    backgroundColor: colors.surface.low,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderStyle: 'dashed',
     borderColor: colors.neutral.gray400,
   },
-  photoPlaceholderIcon: {
-    fontSize: 40,
-    marginBottom: spacing.xs,
-  },
   photoPlaceholderText: {
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     textAlign: 'center',
+    marginTop: spacing.xs,
   },
   galleryInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF9E6',
+    backgroundColor: colors.primary.fixed,
     padding: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     marginTop: spacing.sm,
   },
   galleryInfoIcon: {
-    fontSize: 20,
     marginRight: spacing.xs,
   },
   galleryInfoText: {
     flex: 1,
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray700,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.onSurfaceVariant,
     lineHeight: 16,
   },
-  // UIGM Footer Styles
   footerContainer: {
     marginTop: spacing.xl,
     paddingTop: spacing.lg,
-    borderTopWidth: 2,
-    borderTopColor: colors.neutral.gray200,
   },
   uigmFooter: {
-    backgroundColor: colors.primary.light,
+    backgroundColor: colors.surface.lowest,
     padding: spacing.lg,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     alignItems: 'center',
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
+    ...shadows.diffusion,
   },
   uigmTitle: {
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     marginBottom: spacing.xs,
   },
   uigmAuthor: {
     fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
+    fontFamily: typography.fontFamily.bold,
     color: colors.primary.main,
     marginBottom: spacing.xs,
   },
   uigmDepartment: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.onSurface,
     marginBottom: spacing.xs,
   },
   uigmUniversity: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray900,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.text.onSurface,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   uigmYear: {
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     marginTop: spacing.xs,
   },
 });

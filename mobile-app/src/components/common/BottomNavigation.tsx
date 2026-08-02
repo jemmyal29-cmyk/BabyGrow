@@ -28,7 +28,6 @@ const TABS: TabItem[] = [
   { key: 'Home', icon: '🏠', label: 'Beranda' },
   { key: 'Growth', icon: '📊', label: 'Riwayat' },
   { key: 'AIAssistant', icon: '🤖', label: 'BabyGrow AI' },
-  { key: 'Immunization', icon: '💉', label: 'Imunisasi' },
   { key: 'Profile', icon: '👤', label: 'Akun' },
 ];
 
@@ -113,16 +112,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF', // SOLID WHITE - NO TRANSPARENCY!
-    borderTopWidth: 3,
-    borderTopColor: '#FF85A1', // Vibrant Pink border - KAI style!
-    // STRONG SHADOW untuk layering yang jelas
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 20, // Android shadow - HIGHEST!
-    zIndex: 1000, // ALWAYS ON TOP!
+    backgroundColor: colors.surface.lowest,
+    borderTopWidth: 1,
+    borderTopColor: colors.outline.variant,
+    ...shadows.diffusion,
+    shadowOffset: { width: 0, height: -8 },
+    zIndex: 1000,
   },
   tabBar: {
     flexDirection: 'row',
@@ -136,37 +131,39 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     position: 'relative',
   },
-  // KAI-Style Circular Active Indicator
   activeIndicator: {
     position: 'absolute',
-    top: -2,
-    width: 32,
+    top: 0,
+    width: spacing.xl,
     height: 3,
     borderRadius: borderRadius.full,
     backgroundColor: colors.primary.main,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
+    width: spacing.section,
+    height: spacing.section,
     borderRadius: borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs / 2,
+    marginBottom: spacing.xs,
   },
   iconContainerActive: {
-    backgroundColor: colors.primary.main + '15', // 15% opacity pink background
+    backgroundColor: colors.background.overlay,
   },
   icon: {
-    fontSize: 22,
+    fontSize: typography.fontSize.xl,
   },
   label: {
+    ...typography.styles.labelCaps,
     fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.medium as any,
+    letterSpacing: 0,
+    textTransform: 'none',
+    fontWeight: typography.fontWeight.medium,
     color: colors.text.secondary,
     textAlign: 'center',
   },
   labelActive: {
     color: colors.primary.main,
-    fontWeight: typography.fontWeight.semiBold as any,
+    fontWeight: typography.fontWeight.semiBold,
   },
 });

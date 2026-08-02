@@ -26,6 +26,14 @@ create table if not exists public.children (
   birth_weight numeric,
   birth_height numeric,
   photo_url text,
+  -- Data orang tua (opsional) — lihat juga migrate-parental-metrics.sql
+  mother_height_cm numeric,
+  father_height_cm numeric,
+  mother_weight_kg numeric,
+  father_weight_kg numeric,
+  mother_blood text,
+  father_blood text,
+  child_blood text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -80,33 +88,40 @@ alter table public.profiles enable row level security;
 alter table public.children enable row level security;
 alter table public.measurements enable row level security;
 
--- Profiles policies
+-- Profiles policies (idempotent: drop then create)
+drop policy if exists "Users can view own profile" on public.profiles;
 create policy "Users can view own profile"
   on public.profiles for select using (auth.uid() = id);
 
+drop policy if exists "Admins can view all profiles" on public.profiles;
 create policy "Admins can view all profiles"
   on public.profiles for select using (
     exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'ROLE_ADMIN')
   );
 
+drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
   on public.profiles for update using (auth.uid() = id);
 
 -- Children policies
+drop policy if exists "Parents manage own children" on public.children;
 create policy "Parents manage own children"
   on public.children for all using (auth.uid() = parent_id);
 
+drop policy if exists "Admins manage all children" on public.children;
 create policy "Admins manage all children"
   on public.children for all using (
     exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'ROLE_ADMIN')
   );
 
 -- Measurements policies
+drop policy if exists "Parents manage measurements of own children" on public.measurements;
 create policy "Parents manage measurements of own children"
   on public.measurements for all using (
     exists (select 1 from public.children c where c.id = child_id and c.parent_id = auth.uid())
   );
 
+drop policy if exists "Admins manage all measurements" on public.measurements;
 create policy "Admins manage all measurements"
   on public.measurements for all using (
     exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'ROLE_ADMIN')

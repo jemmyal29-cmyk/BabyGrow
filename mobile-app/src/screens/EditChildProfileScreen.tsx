@@ -3,7 +3,7 @@
  * Floating labels, photo gallery management, and premium styling
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,16 +13,23 @@ import {
   TextInput,
   Dimensions,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BlurView } from 'expo-blur';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-// import { useDarkMode } from '../store/themeStore';
-const { isDarkMode } = { isDarkMode: false }; // Temporary fix
+import { ScreenHeader } from '../components/common';
 import { useNotification } from '../hooks/useNotification';
 import CustomNotification from '../components/common/CustomNotification';
+import {
+  createChildSchema,
+  formatIsoToBirthDate,
+  parseBirthDateToIso,
+  useUpdateChild,
+} from '../hooks/useChildren';
+import type { ChildRow, Gender } from '../types/database';
 
 const { width } = Dimensions.get('window');
 
@@ -37,21 +44,47 @@ interface ChildhoodPhoto {
   label: string;
 }
 
+function genderToUi(value?: string | null): 'Laki-laki' | 'Perempuan' {
+  if (value === 'female' || value === 'Perempuan') return 'Perempuan';
+  return 'Laki-laki';
+}
+
+function genderToDb(value: string): Gender {
+  return value === 'Perempuan' || value === 'female' ? 'female' : 'male';
+}
+
 export default function EditChildProfileScreen({ navigation, route }: EditChildProfileScreenProps) {
-  const { isDarkMode } = { isDarkMode: false }; // Temporary fix
-  const { notification, showError, showSuccess, showConfirm, hideNotification } = useNotification();
-  const child = route?.params?.child;
+  const { notification, showError, showSuccess, showConfirm, hideNotification } =
+    useNotification();
+  const child = route?.params?.child as ChildRow | undefined;
+  const childId: string | undefined = route?.params?.childId ?? child?.id;
+  const updateChild = useUpdateChild();
+
+  const initialBirthDate = useMemo(() => {
+    const raw =
+      child?.date_of_birth ||
+      (child as { birthDate?: string } | undefined)?.birthDate ||
+      '';
+    return formatIsoToBirthDate(raw);
+  }, [child]);
 
   // Form state
   const [name, setName] = useState(child?.name || '');
-  const [birthDate, setBirthDate] = useState(child?.birthDate || '');
-  const [gender, setGender] = useState(child?.gender || 'Laki-laki');
+  const [birthDate, setBirthDate] = useState(initialBirthDate);
+  const [gender, setGender] = useState<'Laki-laki' | 'Perempuan'>(
+    genderToUi(child?.gender)
+  );
   const [childhoodPhotos, setChildhoodPhotos] = useState<ChildhoodPhoto[]>([]);
+  const [saving, setSaving] = useState(false);
 
   // Animation refs
-  const nameInputAnim = useRef(new Animated.Value(0)).current;
-  const birthDateInputAnim = useRef(new Animated.Value(0)).current;
+  const nameInputAnim = useRef(new Animated.Value(name ? 1 : 0)).current;
+  const birthDateInputAnim = useRef(new Animated.Value(initialBirthDate ? 1 : 0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const photosKey = childId
+    ? `@babygrow/childhood_photos_${childId}`
+    : '@babygrow/childhood_photos';
 
   useEffect(() => {
     loadChildhoodPhotos();
@@ -60,13 +93,15 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [photosKey]);
 
   const loadChildhoodPhotos = async () => {
     try {
-      const photosData = await AsyncStorage.getItem('childhood_photos');
+      const photosData = await AsyncStorage.getItem(photosKey);
       if (photosData) {
         setChildhoodPhotos(JSON.parse(photosData));
+      } else {
+        setChildhoodPhotos([]);
       }
     } catch (error) {
       console.error('Failed to load photos:', error);
@@ -75,7 +110,7 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
 
   const saveChildhoodPhotos = async (photos: ChildhoodPhoto[]) => {
     try {
-      await AsyncStorage.setItem('childhood_photos', JSON.stringify(photos));
+      await AsyncStorage.setItem(photosKey, JSON.stringify(photos));
       setChildhoodPhotos(photos);
     } catch (error) {
       console.error('Failed to save photos:', error);
@@ -120,27 +155,17 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
     }
   };
 
-  const removePhoto = async (photoId: string) => {
-    // Using CustomNotification instead of Alert.alert for Expo Go
-    showError('Info', 'Fitur hapus foto belum diimplementasikan');
-    // TODO: Implement proper delete confirmation with CustomNotification modal
-    /*
-    Alert.alert(
+  const removePhoto = (photoId: string) => {
+    showConfirm(
       'Hapus Foto',
       'Apakah Anda yakin ingin menghapus foto ini?',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Hapus',
-          style: 'destructive',
-          onPress: async () => {
-            const updatedPhotos = childhoodPhotos.filter(photo => photo.id !== photoId);
-            await saveChildhoodPhotos(updatedPhotos);
-          },
-        },
-      ]
+      async () => {
+        const updatedPhotos = childhoodPhotos.filter((photo) => photo.id !== photoId);
+        await saveChildhoodPhotos(updatedPhotos);
+      },
+      'Hapus',
+      'Batal'
     );
-    */
   };
 
   const animateInput = (animValue: Animated.Value, focused: boolean) => {
@@ -151,30 +176,54 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
     }).start();
   };
 
-  const handleSave = () => {
-    if (!name.trim()) {
-      showError('Validasi', 'Nama anak harus diisi');
+  const handleSave = async () => {
+    if (!childId) {
+      showError('Error', 'Data anak tidak ditemukan. Buka ulang dari daftar anak.');
       return;
     }
 
-    if (!birthDate.trim()) {
-      showError('Validasi', 'Tanggal lahir harus diisi');
-      return;
-    }
-
-    // Save the child data
-    const updatedChild = {
-      ...child,
+    const parsed = createChildSchema.safeParse({
       name: name.trim(),
+      gender: genderToDb(gender),
       birthDate: birthDate.trim(),
-      gender,
-    };
+    });
 
-    showSuccess(
-      'Berhasil!',
-      'Profil anak berhasil disimpan 💗',
-      () => navigation.goBack()
-    );
+    if (!parsed.success) {
+      showError(
+        'Validasi',
+        parsed.error.errors[0]?.message || 'Data profil tidak valid'
+      );
+      return;
+    }
+
+    const date_of_birth = parseBirthDateToIso(parsed.data.birthDate);
+    if (!date_of_birth) {
+      showError('Validasi', 'Tanggal lahir tidak valid');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await updateChild.mutateAsync({
+        id: childId,
+        name: parsed.data.name,
+        gender: parsed.data.gender,
+        date_of_birth,
+        birth_weight: child?.birth_weight ?? null,
+        birth_height: child?.birth_height ?? null,
+        child_blood: child?.child_blood ?? null,
+      });
+
+      showSuccess('Berhasil!', 'Profil anak berhasil disimpan', () =>
+        navigation.goBack()
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Gagal menyimpan profil anak';
+      showError('Gagal Menyimpan', message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renderFloatingLabelInput = (
@@ -193,26 +242,20 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
         inputRange: [0, 1],
         outputRange: [16, 12],
       }),
-      color: isDarkMode ? '#FFFFFF' : colors.text.secondary,
+      color: colors.text.secondary,
     };
 
     return (
-      <View style={[
-        styles.inputContainer,
-        { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-      ]}>
+      <View style={styles.inputContainer}>
         <Animated.Text style={[styles.floatingLabel, labelStyle]}>
           {label}
         </Animated.Text>
         <TextInput
-          style={[
-            styles.input,
-            { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-          ]}
+          style={styles.input}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={isDarkMode ? 'rgba(255, 255, 255, 0.5)' : colors.text.tertiary}
+          placeholderTextColor={colors.text.disabled}
           onFocus={() => animateInput(animValue, true)}
           onBlur={() => animateInput(animValue, value.length > 0)}
         />
@@ -222,168 +265,112 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
 
   const renderGenderSelector = () => (
     <View style={styles.genderContainer}>
-      <Text style={[
-        styles.sectionTitle,
-        { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-      ]}>
-        Jenis Kelamin
-      </Text>
+      <Text style={styles.sectionTitle}>Jenis Kelamin</Text>
       <View style={styles.genderButtons}>
-        {['Laki-laki', 'Perempuan'].map((option) => (
-          <TouchableOpacity
-            key={option}
-            style={[
-              styles.genderButton,
-              gender === option && {
-                backgroundColor: isDarkMode ? colors.pink[100] : colors.pink.main,
-              },
-              {
-                backgroundColor: gender === option 
-                  ? (isDarkMode ? colors.pink[100] : colors.pink.main)
-                  : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF'),
-                borderColor: isDarkMode ? colors.pink[100] : colors.pink.main,
-              }
-            ]}
-            onPress={() => setGender(option)}
-          >
-            <Text style={[
-              styles.genderButtonText,
-              {
-                color: gender === option 
-                  ? '#FFFFFF' 
-                  : (isDarkMode ? '#FFFFFF' : colors.pink.main),
-              }
-            ]}>
-              {option === 'Laki-laki' ? '👦' : '👧'} {option}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-
-  const renderPhotoGallery = () => (
-    <View style={[
-      styles.galleryContainer,
-      { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-    ]}>
-      <Text style={[
-        styles.sectionTitle,
-        { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-      ]}>
-        📸 Galeri Masa Kecil ({childhoodPhotos.length}/5)
-      </Text>
-      
-      <View style={styles.photoGrid}>
-        {Array.from({ length: 5 }).map((_, index) => {
-          const photo = childhoodPhotos[index];
-          
-          if (photo) {
-            return (
-              <TouchableOpacity
-                key={photo.id}
-                style={[
-                  styles.photoSlot,
-                  { backgroundColor: isDarkMode ? 'rgba(255, 105, 180, 0.2)' : colors.pink[50] }
-                ]}
-                onLongPress={() => removePhoto(photo.id)}
-              >
-                <View style={styles.photoContainer}>
-                  <Text style={styles.photoEmoji}>📷</Text>
-                  <Text style={[
-                    styles.photoLabel,
-                    { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-                  ]}>
-                    {photo.label}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          }
-          
+        {['Laki-laki', 'Perempuan'].map((option) => {
+          const active = gender === option;
           return (
             <TouchableOpacity
-              key={index}
-              style={[
-                styles.photoSlot,
-                styles.emptyPhotoSlot,
-                { 
-                  backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : colors.background.default,
-                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.3)' : '#EEEEEE',
-                }
-              ]}
-              onPress={pickImage}
+              key={option}
+              style={[styles.genderButton, active && styles.genderButtonActive]}
+              onPress={() => setGender(option)}
+              activeOpacity={0.85}
             >
-              <Text style={styles.addPhotoIcon}>+</Text>
-              <Text style={[
-                styles.addPhotoText,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-              ]}>
-                Tambah Foto
+              <MaterialCommunityIcons
+                name={option === 'Laki-laki' ? 'face-man' : 'face-woman'}
+                size={20}
+                color={active ? colors.text.inverse : colors.primary.main}
+              />
+              <Text
+                style={[
+                  styles.genderButtonText,
+                  active && styles.genderButtonTextActive,
+                ]}
+              >
+                {option}
               </Text>
             </TouchableOpacity>
           );
         })}
       </View>
-      
-      <Text style={[
-        styles.galleryHint,
-        { color: isDarkMode ? '#FFFFFF' : colors.text.tertiary }
-      ]}>
-        💡 Tekan lama foto untuk menghapus
+    </View>
+  );
+
+  const renderPhotoGallery = () => (
+    <View style={styles.galleryContainer}>
+      <Text style={styles.sectionTitle}>
+        Galeri Masa Kecil ({childhoodPhotos.length}/5)
       </Text>
+
+      <View style={styles.photoGrid}>
+        {Array.from({ length: 5 }).map((_, index) => {
+          const photo = childhoodPhotos[index];
+
+          if (photo) {
+            return (
+              <TouchableOpacity
+                key={photo.id}
+                style={styles.photoSlot}
+                onLongPress={() => removePhoto(photo.id)}
+              >
+                <View style={styles.photoContainer}>
+                  <MaterialCommunityIcons
+                    name="image"
+                    size={22}
+                    color={colors.primary.main}
+                  />
+                  <Text style={styles.photoLabel}>{photo.label}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }
+
+          return (
+            <TouchableOpacity
+              key={index}
+              style={[styles.photoSlot, styles.emptyPhotoSlot]}
+              onPress={pickImage}
+            >
+              <MaterialCommunityIcons
+                name="plus"
+                size={22}
+                color={colors.primary.main}
+              />
+              <Text style={styles.addPhotoText}>Tambah</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <Text style={styles.galleryHint}>Tekan lama foto untuk menghapus</Text>
     </View>
   );
 
   return (
-    <SafeAreaView style={[
-      styles.container,
-      { backgroundColor: isDarkMode ? '#212529' : colors.background.default }
-    ]} edges={['top']}>
-      {/* Header */}
-      <View style={[
-        styles.header,
-        { backgroundColor: isDarkMode ? '#343a40' : '#FFFFFF' }
-      ]}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={[
-            styles.backIcon,
-            { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-          ]}>←</Text>
-        </TouchableOpacity>
-        <Text style={[
-          styles.headerTitle,
-          { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-        ]}>
-          ✏️ Edit Profil Anak
-        </Text>
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={[
-            styles.saveButtonText,
-            { color: isDarkMode ? colors.pink[100] : colors.pink.main }
-          ]}>
-            Simpan
-          </Text>
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScreenHeader
+        title="Edit Profil Anak"
+        onBack={() => navigation.goBack()}
+        rightAction={
+          <TouchableOpacity
+            onPress={handleSave}
+            hitSlop={8}
+            disabled={saving || updateChild.isPending}
+          >
+            {saving || updateChild.isPending ? (
+              <ActivityIndicator size="small" color={colors.primary.main} />
+            ) : (
+              <Text style={styles.saveButtonText}>Simpan</Text>
+            )}
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-          {/* Basic Information */}
-          <View style={[
-            styles.section,
-            { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-          ]}>
-            <Text style={[
-              styles.sectionTitle,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-            ]}>
-              👶 Informasi Dasar
-            </Text>
-            
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Informasi Dasar</Text>
+
             {renderFloatingLabelInput(
               'Nama Lengkap',
               name,
@@ -403,79 +390,42 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
             {renderGenderSelector()}
           </View>
 
-          {/* Photo Gallery */}
           {renderPhotoGallery()}
 
-          {/* Additional Information */}
-          <View style={[
-            styles.section,
-            { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#FFFFFF' }
-          ]}>
-            <Text style={[
-              styles.sectionTitle,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-            ]}>
-              📋 Informasi Tambahan
-            </Text>
-            
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Informasi Tambahan</Text>
+
             <View style={styles.infoRow}>
-              <Text style={[
-                styles.infoLabel,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-              ]}>
-                Berat Lahir:
-              </Text>
-              <Text style={[
-                styles.infoValue,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-              ]}>
-                3.2 kg
+              <Text style={styles.infoLabel}>Berat Lahir:</Text>
+              <Text style={styles.infoValue}>
+                {child?.birth_weight != null
+                  ? `${child.birth_weight} kg`
+                  : '—'}
               </Text>
             </View>
-            
+
             <View style={styles.infoRow}>
-              <Text style={[
-                styles.infoLabel,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-              ]}>
-                Tinggi Lahir:
-              </Text>
-              <Text style={[
-                styles.infoValue,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-              ]}>
-                49 cm
+              <Text style={styles.infoLabel}>Tinggi Lahir:</Text>
+              <Text style={styles.infoValue}>
+                {child?.birth_height != null
+                  ? `${child.birth_height} cm`
+                  : '—'}
               </Text>
             </View>
-            
+
             <View style={styles.infoRow}>
-              <Text style={[
-                styles.infoLabel,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
-              ]}>
-                Golongan Darah:
-              </Text>
-              <Text style={[
-                styles.infoValue,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
-              ]}>
-                A
+              <Text style={styles.infoLabel}>Golongan Darah:</Text>
+              <Text style={styles.infoValue}>
+                {child?.child_blood?.trim() || '—'}
               </Text>
             </View>
           </View>
 
-          {/* UIGM Footer */}
           <View style={styles.footerContainer}>
-            <Text style={[
-              styles.footerText,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.tertiary }
-            ]}>
+            <Text style={styles.footerText}>
               Developed by Jemi Altio - Sistem Komputer
             </Text>
-            <Text style={[
-              styles.footerText,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.tertiary }
-            ]}>
+            <Text style={styles.footerText}>
               Universitas Indo Global Mandiri
             </Text>
           </View>
@@ -500,67 +450,45 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...shadows.soft,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-  },
-  headerTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-  },
-  saveButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.background.default,
   },
   saveButtonText: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.primary.main,
   },
   scrollContainer: {
     flex: 1,
   },
   content: {
     padding: spacing.md,
+    paddingBottom: 90,
   },
   section: {
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
     padding: spacing.lg,
     marginBottom: spacing.lg,
-    ...shadows.standard,
+    ...shadows.diffusion,
   },
   sectionTitle: {
     fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.text.onSurface,
     marginBottom: spacing.md,
   },
   inputContainer: {
     position: 'relative',
     marginBottom: spacing.lg,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
-    ...shadows.soft,
+    borderColor: colors.neutral.gray300,
+    backgroundColor: colors.surface.lowest,
   },
   floatingLabel: {
     position: 'absolute',
     left: spacing.md,
-    fontWeight: typography.fontWeight.medium as any,
+    fontFamily: typography.fontFamily.medium,
     backgroundColor: 'transparent',
     paddingHorizontal: spacing.xs,
   },
@@ -569,6 +497,8 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     fontSize: typography.fontSize.md,
+    color: colors.text.onSurface,
+    fontFamily: typography.fontFamily.medium,
   },
   genderContainer: {
     marginBottom: spacing.md,
@@ -579,21 +509,33 @@ const styles = StyleSheet.create({
   },
   genderButton: {
     flex: 1,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 2,
+    flexDirection: 'row',
     alignItems: 'center',
-    ...shadows.soft,
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: borderRadius.xl,
+    borderWidth: 2,
+    borderColor: colors.primary.main,
+    backgroundColor: colors.surface.lowest,
+  },
+  genderButtonActive: {
+    backgroundColor: colors.primary.main,
   },
   genderButtonText: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.primary.main,
+  },
+  genderButtonTextActive: {
+    color: colors.text.inverse,
   },
   galleryContainer: {
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
     padding: spacing.lg,
     marginBottom: spacing.lg,
-    ...shadows.standard,
+    ...shadows.diffusion,
   },
   photoGrid: {
     flexDirection: 'row',
@@ -607,34 +549,35 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    ...shadows.soft,
+    backgroundColor: colors.primary.fixed,
   },
   emptyPhotoSlot: {
     borderWidth: 2,
     borderStyle: 'dashed',
+    borderColor: colors.neutral.gray400,
+    backgroundColor: colors.surface.low,
   },
   photoContainer: {
     alignItems: 'center',
   },
-  photoEmoji: {
-    fontSize: 20,
-    marginBottom: spacing.xs / 2,
-  },
   photoLabel: {
     fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     textAlign: 'center',
-  },
-  addPhotoIcon: {
-    fontSize: 24,
-    color: colors.pink.main,
-    marginBottom: spacing.xs / 2,
+    marginTop: 2,
   },
   addPhotoText: {
     fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
     textAlign: 'center',
+    marginTop: 2,
   },
   galleryHint: {
     fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.tertiary,
     textAlign: 'center',
     fontStyle: 'italic',
   },
@@ -644,14 +587,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+    borderBottomColor: colors.neutral.gray200,
   },
   infoLabel: {
     fontSize: typography.fontSize.md,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.secondary,
   },
   infoValue: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.onSurface,
   },
   footerContainer: {
     alignItems: 'center',
@@ -660,6 +606,8 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: 16,
   },

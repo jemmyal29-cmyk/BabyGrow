@@ -1,13 +1,12 @@
 /**
- * BabyGrow 2026 - Splash Screen
- * Professional splash with fade-in animation and pink gradient
+ * BabyGrow — Splash (desainuiux.md: Premium Infant Monitoring)
+ * White canvas, soft primary glow, wordmark + pill loader
  */
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Image, StyleSheet, Animated, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-
-const { width, height } = Dimensions.get('window');
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors, typography, spacing } from '../theme';
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -15,155 +14,204 @@ interface SplashScreenProps {
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pillProgress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Parallel animations for smooth entrance
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 700,
+      useNativeDriver: true,
+    }).start();
 
-    // Auto-navigate after 2.5 seconds
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.98,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+
+    const pillLoop = Animated.loop(
+      Animated.timing(pillProgress, {
+        toValue: 1,
+        duration: 1800,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: false,
+      })
+    );
+    pillLoop.start();
+
     const timer = setTimeout(() => {
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 500,
+        duration: 450,
         useNativeDriver: true,
-      }).start(() => {
-        onFinish();
-      });
-    }, 2500);
+      }).start(() => onFinish());
+    }, 2600);
 
-    return () => clearTimeout(timer);
-  }, [fadeAnim, scaleAnim, onFinish]);
+    return () => {
+      clearTimeout(timer);
+      pulse.stop();
+      pillLoop.stop();
+    };
+  }, [fadeAnim, pulseAnim, pillProgress, onFinish]);
+
+  const pill1Width = pillProgress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: [32, 4, 4, 32],
+  });
+  const pill2Width = pillProgress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: [4, 32, 4, 4],
+  });
+  const pill3Width = pillProgress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: [4, 4, 32, 4],
+  });
+  const pill1Opacity = pillProgress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: [1, 0.2, 0.2, 1],
+  });
+  const pill2Opacity = pillProgress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: [0.2, 1, 0.2, 0.2],
+  });
+  const pill3Opacity = pillProgress.interpolate({
+    inputRange: [0, 0.33, 0.66, 1],
+    outputRange: [0.2, 0.2, 1, 0.2],
+  });
 
   return (
-    <LinearGradient
-      colors={['#FFE5F0', '#FFB6C1', '#FF69B4']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      {/* Atmospheric primary glow */}
+      <View style={styles.glowOrb} pointerEvents="none" />
+
       <Animated.View
         style={[
-          styles.logoContainer,
+          styles.brandBlock,
           {
             opacity: fadeAnim,
-            transform: [{ scale: scaleAnim }],
+            transform: [{ scale: pulseAnim }],
           },
         ]}
       >
-        <View style={styles.logoFrame}>
-          <Image
-            source={require('../../assets/images/logo-babygrow.png')}
-            style={styles.logo}
-            resizeMode="contain"
+        <MaterialCommunityIcons
+          name="heart-cog"
+          size={48}
+          color={colors.primary.main}
+          style={styles.icon}
+        />
+
+        <Text style={styles.wordmark}>BabyGrow</Text>
+
+        <View style={styles.pillRow}>
+          <Animated.View
+            style={[
+              styles.pill,
+              { width: pill1Width, opacity: pill1Opacity },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.pill,
+              { width: pill2Width, opacity: pill2Opacity },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.pill,
+              { width: pill3Width, opacity: pill3Opacity },
+            ]}
           />
         </View>
-        
-        <Animated.View style={{ opacity: fadeAnim }}>
-          <Text style={styles.title}>BabyGrow</Text>
-        </Animated.View>
-        
-        <Animated.View style={{ opacity: fadeAnim }}>
-          <Text style={styles.subtitle}>Sistem Pemantauan Pertumbuhan Balita</Text>
-        </Animated.View>
       </Animated.View>
 
-      {/* Decorative circles */}
-      <View style={styles.circle1} />
-      <View style={styles.circle2} />
-      <View style={styles.circle3} />
-    </LinearGradient>
+      <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
+        <Text style={styles.footerLabel}>Secure Monitoring Environment</Text>
+        <Text style={styles.credit}>Created by Tio 2026</Text>
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background.paper,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FF69B4',
+    overflow: 'hidden',
   },
-  logoContainer: {
-    alignItems: 'center',
+  glowOrb: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: colors.primary.main,
+    opacity: 0.07,
+    // Soft “blur” via oversized translucent disc
+    transform: [{ scale: 1.4 }],
+  },
+  brandBlock: {
     zIndex: 10,
-  },
-  logoFrame: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#FF69B4',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 15,
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
+    gap: spacing.sm,
   },
-  logo: {
-    width: 140,
-    height: 140,
+  icon: {
+    marginBottom: spacing.md,
   },
-  title: {
-    marginTop: 24,
-    fontSize: 42,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 8,
+  wordmark: {
+    fontFamily: typography.fontFamily.extraBold,
+    fontSize: typography.fontSize.display,
+    lineHeight: typography.lineHeight.display,
+    letterSpacing: typography.letterSpacing.display,
+    color: colors.primary.main,
+    textShadowColor: 'rgba(255, 0, 127, 0.35)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 18,
   },
-  subtitle: {
-    marginTop: 8,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.9,
-    letterSpacing: 4,
+  pillRow: {
+    marginTop: spacing.xxl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    height: 4,
+  },
+  pill: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: colors.primary.main,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 48,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: spacing.containerPadding,
+  },
+  footerLabel: {
+    ...typography.styles.labelCaps,
+    color: 'rgba(94, 94, 94, 0.4)',
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
-  // Decorative background circles
-  circle1: {
-    position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    top: -100,
-    left: -100,
-  },
-  circle2: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    bottom: -50,
-    right: -50,
-  },
-  circle3: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    top: height * 0.3,
-    right: width * 0.1,
+  credit: {
+    marginTop: spacing.sm,
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.xs,
+    color: 'rgba(94, 94, 94, 0.45)',
   },
 });
 

@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '../../theme';
+import {colors, typography, spacing, borderRadius} from '../../theme';
 
 export default function ParentDataScreen({ navigation }: any) {
   const [parentName, setParentName] = useState('');
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: colors.neutral.white,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     fontWeight: 'bold',
   },
   checkboxLabel: {
@@ -289,20 +289,20 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.surface.low,
     margin: spacing.lg,
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'flex-start',
   },
   infoIcon: {
-    fontSize: 24,
+    fontSize: typography.fontSize.xl,
     marginRight: spacing.sm,
   },
   infoText: {
     flex: 1,
     fontSize: typography.fontSize.sm,
-    color: '#1976D2',
+    color: colors.info,
     lineHeight: 20,
   },
   nextButton: {

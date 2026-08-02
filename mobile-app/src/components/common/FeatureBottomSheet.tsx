@@ -21,6 +21,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import {colors, typography, spacing, borderRadius, shadows} from '../../theme';
 
 interface FeatureBottomSheetProps {
   visible: boolean;
@@ -81,7 +82,7 @@ export const FeatureBottomSheet: React.FC<FeatureBottomSheetProps> = ({
         {/* Bottom Sheet */}
         <Animated.View style={[styles.sheet, animatedSheetStyle]}>
           <LinearGradient
-            colors={['#FFFFFF', '#FFF0F5']}
+            colors={[colors.surface.lowest, colors.primary.fixed]}
             style={styles.sheetContent}
           >
             {/* Handle Bar */}
@@ -112,7 +113,7 @@ export const FeatureBottomSheet: React.FC<FeatureBottomSheetProps> = ({
               {/* Close Button */}
               <Pressable style={styles.closeButton} onPress={onClose}>
                 <LinearGradient
-                  colors={['#FF69B4', '#FFC1CC']}
+                  colors={[...colors.secondary.gradient.vibrantPink]}
                   style={styles.closeButtonGradient}
                 >
                   <Text style={styles.closeButtonText}>Mengerti</Text>
@@ -133,107 +134,93 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.effects.shadowMedium,
   },
   sheet: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    borderTopLeftRadius: borderRadius.xxl,
+    borderTopRightRadius: borderRadius.xxl,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 20,
+    ...shadows.large,
   },
   sheetContent: {
-    paddingBottom: 32,
+    paddingBottom: spacing.xl,
   },
   handleBar: {
     width: 40,
     height: 5,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 3,
+    backgroundColor: colors.neutral.gray300,
+    borderRadius: borderRadius.DEFAULT,
     alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 24,
+    marginTop: spacing.element,
+    marginBottom: spacing.lg,
   },
   contentContainer: {
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
   },
   iconContainer: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.lowest,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: '#FF69B4',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    elevation: 12,
+    marginBottom: spacing.lg,
+    ...shadows.primaryGlow,
   },
   icon: {
-    fontSize: 64,
+    fontSize: typography.fontSize.huge,
   },
   iconGlow: {
     position: 'absolute',
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FF69B4',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary.main,
     opacity: 0.2,
     transform: [{ scale: 1.2 }],
   },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#212121',
-    marginBottom: 12,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.primary,
+    marginBottom: spacing.element,
     textAlign: 'center',
   },
   description: {
-    fontSize: 16,
-    color: '#666',
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
+    marginBottom: spacing.xl,
   },
   aiIndicator: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    gap: spacing.element,
+    marginBottom: spacing.md,
   },
   aiDot: {
     width: 12,
     height: 12,
-    borderRadius: 6,
-    backgroundColor: '#FF69B4',
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary.main,
   },
   statusText: {
-    fontSize: 14,
-    color: '#999',
-    marginBottom: 32,
+    fontSize: typography.fontSize.sm,
+    color: colors.neutral.gray400,
+    marginBottom: spacing.xl,
   },
   closeButton: {
     width: '100%',
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
-    shadowColor: '#FF69B4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
+    ...shadows.primaryGlow,
   },
   closeButtonGradient: {
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
     alignItems: 'center',
   },
   closeButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...typography.styles.buttonText,
+    fontSize: typography.fontSize.lg,
+    color: colors.text.inverse,
   },
 });

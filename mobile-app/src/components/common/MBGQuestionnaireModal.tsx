@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, typography, spacing, borderRadius } from '../../theme';
+import {colors, typography, spacing, borderRadius} from '../../theme';
 import GeminiAIService from '../../services/GeminiAIService';
 
 interface MBGQuestionnaireModalProps {
@@ -31,7 +31,7 @@ interface MBGQuestionnaireModalProps {
 export default function MBGQuestionnaireModal({
   visible,
   onClose,
-  childAge = 18,
+  childAge = 0,
   childWeight = 10.2,
   childHeight = 78.5,
 }: MBGQuestionnaireModalProps) {
@@ -99,13 +99,13 @@ export default function MBGQuestionnaireModal({
       <BlurView intensity={80} tint="dark" style={styles.overlay}>
         <View style={styles.modalContainer}>
           <LinearGradient
-            colors={['#FFB6C1', '#FFF0F5', '#FFFFFF']}
+            colors={[colors.primary.fixedDim, colors.primary.fixed, colors.neutral.white]}
             style={styles.modalContent}
           >
             {/* Header */}
             <View style={styles.header}>
               <Text style={styles.title}>🍽️ AI Menu Bergizi</Text>
-              <Text style={styles.subtitle}>Powered by Google Gemini</Text>
+              <Text style={styles.subtitle}>Rekomendasi menu cerdas</Text>
               <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
                 <Text style={styles.closeIcon}>✕</Text>
               </TouchableOpacity>
@@ -118,7 +118,9 @@ export default function MBGQuestionnaireModal({
                   <View style={styles.childInfo}>
                     <Text style={styles.childInfoTitle}>👶 Data Anak</Text>
                     <Text style={styles.childInfoText}>
-                      Usia: {childAge} bulan • Berat: {childWeight} kg • Tinggi: {childHeight} cm
+                      Usia: {childAge > 0 ? `${childAge} bulan` : '—'} • Berat:{' '}
+                      {childWeight != null ? `${childWeight} kg` : '—'} • Tinggi:{' '}
+                      {childHeight != null ? `${childHeight} cm` : '—'}
                     </Text>
                   </View>
 
@@ -174,7 +176,7 @@ export default function MBGQuestionnaireModal({
                   >
                     {isGenerating ? (
                       <View style={styles.loadingContainer}>
-                        <ActivityIndicator color="#FFFFFF" size="small" />
+                        <ActivityIndicator color={colors.neutral.white} size="small" />
                         <Text style={styles.generateButtonText}>Generating...</Text>
                       </View>
                     ) : (
@@ -263,13 +265,13 @@ const styles = StyleSheet.create({
     right: 0,
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     backgroundColor: colors.neutral.gray200,
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeIcon: {
-    fontSize: 20,
+    fontSize: typography.fontSize.lg,
     color: colors.neutral.gray700,
   },
   childInfo: {

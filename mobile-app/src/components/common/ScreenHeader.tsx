@@ -1,10 +1,11 @@
 /**
- * ScreenHeader — consistent top app bar (desainuiux.md Identity Anchor)
+ * ScreenHeader — Identity Anchor (desainuiux.md)
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing } from '../../theme';
 import HapticService from '../../services/HapticService';
 
@@ -31,7 +32,13 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
   const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.wrap, { paddingTop: Math.max(insets.top, spacing.md) }, style]}>
+    <View
+      style={[
+        styles.wrap,
+        { paddingTop: Math.max(insets.top, spacing.md) },
+        style,
+      ]}
+    >
       <View style={styles.row}>
         <View style={styles.left}>
           {onBack ? (
@@ -43,7 +50,11 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
               hitSlop={12}
               style={styles.backBtn}
             >
-              <Text style={styles.backText}>←</Text>
+              <MaterialCommunityIcons
+                name="arrow-left"
+                size={24}
+                color={colors.primary.main}
+              />
             </TouchableOpacity>
           ) : null}
           {leftAction}
@@ -68,7 +79,7 @@ const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: spacing.containerPadding,
     paddingBottom: spacing.md,
-    backgroundColor: colors.background.default,
+    backgroundColor: 'transparent',
   },
   row: {
     flexDirection: 'row',
@@ -84,16 +95,11 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
     padding: spacing.xs,
   },
-  backText: {
-    fontSize: 22,
-    color: colors.primary.main,
-    fontWeight: typography.fontWeight.bold,
-  },
   titleBlock: {
     flex: 1,
   },
   brand: {
-    ...typography.styles.displayLg,
+    ...typography.styles.brandMark,
     color: colors.primary.main,
   },
   title: {
@@ -102,8 +108,9 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
-    marginTop: 2,
+    marginTop: spacing.xs,
   },
   right: {
     marginLeft: spacing.md,

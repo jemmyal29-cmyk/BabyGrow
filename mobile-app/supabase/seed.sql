@@ -5,10 +5,15 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 0) DDL pendukung (aman dijalankan ulang)
+-- 0) DDL — recreate tabel referensi (aman: bukan data user)
+--    Kenapa DROP: CREATE IF NOT EXISTS tidak memperbaiki skema lama
+--    yang mungkin tanpa kolom `indicator`.
 -- -----------------------------------------------------------------------------
 
-create table if not exists public.who_standards (
+drop table if exists public.who_standards cascade;
+drop table if exists public.recipes cascade;
+
+create table public.who_standards (
   id uuid primary key default gen_random_uuid(),
   indicator text not null check (indicator in ('wfa', 'hfa', 'wfh')),
   gender text not null check (gender in ('male', 'female')),
@@ -20,10 +25,10 @@ create table if not exists public.who_standards (
   unique (indicator, gender, age_months)
 );
 
-create index if not exists idx_who_standards_lookup
+create index idx_who_standards_lookup
   on public.who_standards (indicator, gender, age_months);
 
-create table if not exists public.recipes (
+create table public.recipes (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   title text not null,
@@ -42,8 +47,8 @@ create table if not exists public.recipes (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_recipes_category on public.recipes (category);
-create index if not exists idx_recipes_mbg on public.recipes (is_mbg_eligible);
+create index idx_recipes_category on public.recipes (category);
+create index idx_recipes_mbg on public.recipes (is_mbg_eligible);
 
 -- RLS: data referensi publik (read-only untuk authenticated)
 alter table public.who_standards enable row level security;

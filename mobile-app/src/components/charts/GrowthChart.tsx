@@ -6,7 +6,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import { colors, typography, spacing } from '../../theme';
+import {colors, typography, spacing, borderRadius} from '../../theme';
 import { GrowthDataPoint } from '../../types/models';
 
 const screenWidth = Dimensions.get('window').width;
@@ -51,10 +51,10 @@ export const GrowthChart: React.FC<GrowthChartProps> = ({
     backgroundGradientFrom: colors.background.paper,
     backgroundGradientTo: colors.background.paper,
     decimalPlaces: 1,
-    color: (opacity = 1) => `rgba(255, 105, 180, ${opacity})`,
+    color: (opacity = 1) => colors.primary.main,
     labelColor: (opacity = 1) => colors.text.secondary,
     style: {
-      borderRadius: 16,
+      borderRadius: borderRadius.lg,
     },
     propsForDots: {
       r: '5',
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
   },
   chart: {
     marginVertical: spacing.sm,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
   },
   legend: {
     flexDirection: 'row',
@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   legendColor: {
     width: 16,
     height: 16,
-    borderRadius: 4,
+    borderRadius: borderRadius.DEFAULT,
   },
   legendText: {
     fontSize: typography.fontSize.sm,

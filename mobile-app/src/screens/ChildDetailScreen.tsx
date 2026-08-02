@@ -1,220 +1,45 @@
 /**
- * Child Detail Screen - HALAMAN MANDIRI (ANTI POP-UP)
- * Menampilkan detail lengkap profil anak tanpa modal/popup
- * 
- * FITUR:
- * - Detail identitas anak (nama, usia, jenis kelamin, tanggal lahir)
- * - Pengukuran terakhir (berat, tinggi, lingkar kepala)
- * - Status pertumbuhan dengan indikator visual
- * - Mini grafik pertumbuhan 6 bulan terakhir
- * - Riwayat medis lengkap
- * - Tombol aksi (Ukur, Grafik, Edit)
+ * Child Detail — data real dari children + useLatestMeasurement
+ * Visual: Toddler Profile (desainuiux.md)
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
-import { LiveMeasurementModal } from '../components/common';
-
-const { width } = Dimensions.get('window');
+import {
+  Button,
+  LiveMeasurementModal,
+  ScreenHeader,
+} from '../components/common';
+import {
+  getStuntingDisplay,
+  useLatestMeasurement,
+} from '../hooks/useMeasurements';
+import { ageLabelFromDob, CHILDREN_QUERY_KEY } from '../hooks/useChildren';
+import { supabase } from '../services/SupabaseClient';
+import type { ChildRow } from '../types/database';
+import HapticService from '../services/HapticService';
+import { loadParentalMetrics } from '../utils/parentalMetricsStorage';
+import {
+  buildParentalInsight,
+  estimatedHealthyWeightKg,
+} from '../utils/parentalGrowth';
 
 interface ChildDetailScreenProps {
   navigation: any;
   route: any;
 }
 
-export default function ChildDetailScreen({ navigation, route }: ChildDetailScreenProps) {
-  const [liveMeasurementModalVisible, setLiveMeasurementModalVisible] = useState(false);
-  
-  const child = route?.params?.child || {
-    name: 'Zaki',
-    gender: 'Laki-laki',
-    birthDate: '15 Mei 2024',
-    age: '18 bulan',
-    weight: '10.2 kg',
-    height: '78.5 cm',
-    headCircumference: '46.0 cm',
-    status: '✅ Sehat',
-    emoji: '👦',
-  };
-
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Custom Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Detail Profil Anak</Text>
-        <TouchableOpacity 
-          style={styles.editButton}
-          onPress={() => navigation.navigate('EditChildProfile', { child })}
-        >
-          <Text style={styles.editIcon}>✏️</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <Text style={styles.avatarEmoji}>{child.emoji}</Text>
-          </View>
-          <Text style={styles.childName}>{child.name}</Text>
-          <Text style={styles.childInfo}>{child.gender} • {child.age}</Text>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>{child.status}</Text>
-          </View>
-        </View>
-
-        {/* Identitas Lengkap */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📋 Identitas Lengkap</Text>
-          <View style={styles.infoCard}>
-            <InfoRow label="Nama Lengkap" value={child.name} />
-            <InfoRow label="Jenis Kelamin" value={child.gender} />
-            <InfoRow label="Tanggal Lahir" value={child.birthDate} />
-            <InfoRow label="Usia Saat Ini" value={child.age} />
-          </View>
-        </View>
-
-        {/* Pengukuran Terakhir */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📏 Pengukuran Terakhir</Text>
-          <View style={styles.measurementGrid}>
-            <MeasurementCard
-              icon="⚖️"
-              label="Berat Badan"
-              value={child.weight}
-              status="normal"
-            />
-            <MeasurementCard
-              icon="📏"
-              label="Tinggi Badan"
-              value={child.height}
-              status="normal"
-            />
-          </View>
-          <View style={styles.measurementCard}>
-            <Text style={styles.measurementIcon}>🧠</Text>
-            <View style={styles.measurementInfo}>
-              <Text style={styles.measurementLabel}>Lingkar Kepala</Text>
-              <Text style={styles.measurementValue}>{child.headCircumference}</Text>
-            </View>
-            <View style={[styles.statusDot, { backgroundColor: colors.status.success }]} />
-          </View>
-        </View>
-
-        {/* Status Pertumbuhan */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📊 Status Pertumbuhan</Text>
-          <View style={styles.growthCard}>
-            <View style={styles.growthHeader}>
-              <Text style={styles.growthTitle}>Analisis WHO</Text>
-              <View style={styles.growthBadge}>
-                <Text style={styles.growthBadgeText}>Normal</Text>
-              </View>
-            </View>
-            
-            <View style={styles.zScoreRow}>
-              <Text style={styles.zScoreLabel}>Berat/Usia (BB/U)</Text>
-              <View style={styles.zScoreBar}>
-                <View style={[styles.zScoreFill, { width: '60%', backgroundColor: colors.status.success }]} />
-              </View>
-              <Text style={styles.zScoreValue}>-0.5</Text>
-            </View>
-
-            <View style={styles.zScoreRow}>
-              <Text style={styles.zScoreLabel}>Tinggi/Usia (TB/U)</Text>
-              <View style={styles.zScoreBar}>
-                <View style={[styles.zScoreFill, { width: '55%', backgroundColor: colors.status.success }]} />
-              </View>
-              <Text style={styles.zScoreValue}>-0.8</Text>
-            </View>
-
-            <View style={styles.zScoreRow}>
-              <Text style={styles.zScoreLabel}>BB/TB</Text>
-              <View style={styles.zScoreBar}>
-                <View style={[styles.zScoreFill, { width: '65%', backgroundColor: colors.status.success }]} />
-              </View>
-              <Text style={styles.zScoreValue}>+0.2</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Riwayat Medis */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🏥 Riwayat Medis</Text>
-          <View style={styles.infoCard}>
-            <InfoRow label="Berat Lahir" value="3.2 kg" />
-            <InfoRow label="Tinggi Lahir" value="49 cm" />
-            <InfoRow label="Alergi" value="Tidak ada" />
-            <InfoRow label="Riwayat Penyakit" value="Tidak ada" />
-          </View>
-        </View>
-
-        {/* Mini Chart Placeholder */}
-        <View style={styles.section}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.sectionTitle}>📈 Tren 6 Bulan</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('GrowthChart', { child })}>
-              <Text style={styles.viewFullLink}>Lihat Lengkap →</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.miniChart}>
-            <Text style={styles.chartPlaceholder}>Grafik Pertumbuhan</Text>
-            <Text style={styles.chartSubtext}>Tap "Lihat Lengkap" untuk grafik detail</Text>
-          </View>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.primaryButton]}
-            onPress={() => setLiveMeasurementModalVisible(true)}
-          >
-            <Text style={styles.actionButtonIcon}>📏</Text>
-            <Text style={styles.primaryButtonText}>Ukur Sekarang</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButton, styles.secondaryButton]}
-            onPress={() => navigation.navigate('GrowthChart', { child })}
-          >
-            <Text style={styles.actionButtonIcon}>📊</Text>
-            <Text style={styles.secondaryButtonText}>Grafik Analisis</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-      
-      {/* Live Measurement Modal */}
-      <LiveMeasurementModal
-        visible={liveMeasurementModalVisible}
-        onClose={() => setLiveMeasurementModalVisible(false)}
-        onMeasurementComplete={(data) => {
-          // Save measurement data silently
-          setLiveMeasurementModalVisible(false);
-        }}
-      />
-    </SafeAreaView>
-  );
-}
-
-// Helper Components
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -224,325 +49,626 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MeasurementCard({ icon, label, value, status }: { 
-  icon: string; 
-  label: string; 
-  value: string; 
-  status: 'normal' | 'warning' | 'danger';
+function MeasurementCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  label: string;
+  value: string;
 }) {
-  const statusColor = status === 'normal' ? colors.status.success : 
-                      status === 'warning' ? colors.status.warning : colors.status.error;
-  
   return (
-    <View style={styles.measurementCardSmall}>
-      <Text style={styles.measurementIconSmall}>{icon}</Text>
-      <Text style={styles.measurementLabelSmall}>{label}</Text>
-      <Text style={styles.measurementValueSmall}>{value}</Text>
-      <View style={[styles.statusDotSmall, { backgroundColor: statusColor }]} />
+    <View style={styles.mCard}>
+      <MaterialCommunityIcons
+        name={icon}
+        size={22}
+        color={colors.primary.main}
+      />
+      <Text style={styles.mLabel}>{label}</Text>
+      <Text style={styles.mValue}>{value}</Text>
     </View>
   );
 }
 
+function zBarWidth(z: number | null | undefined): `${number}%` {
+  if (z == null) return '50%';
+  const pct = Math.max(5, Math.min(95, ((z + 3) / 6) * 100));
+  return `${pct}%`;
+}
+
+export default function ChildDetailScreen({
+  navigation,
+  route,
+}: ChildDetailScreenProps) {
+  const [liveMeasurementModalVisible, setLiveMeasurementModalVisible] =
+    useState(false);
+  const [parentalSummary, setParentalSummary] = useState<string | null>(null);
+  const [weightHint, setWeightHint] = useState<string | null>(null);
+
+  const childId: string | undefined =
+    route?.params?.childId ?? route?.params?.child?.id;
+
+  const childQuery = useQuery({
+    queryKey: [...CHILDREN_QUERY_KEY, 'detail', childId ?? 'none'],
+    enabled: !!childId,
+    queryFn: async (): Promise<ChildRow | null> => {
+      const { data, error } = await supabase
+        .from('children')
+        .select('*')
+        .eq('id', childId!)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+      const row = data as Record<string, unknown>;
+      return {
+        ...(data as ChildRow),
+        name: String(row.name ?? row.full_name ?? ''),
+        date_of_birth: String(row.date_of_birth ?? row.birth_date ?? ''),
+      };
+    },
+  });
+
+  const { data: latest, isPending: latestLoading } =
+    useLatestMeasurement(childId);
+
+  const child = childQuery.data;
+  const stunting = useMemo(
+    () =>
+      getStuntingDisplay({
+        stunting_risk: latest?.stunting_risk,
+        z_score_hfa: latest?.z_score_hfa,
+        z_score_wfa: latest?.z_score_wfa,
+      }),
+    [latest]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!childId || !child) {
+        setParentalSummary(null);
+        return;
+      }
+      const metrics = await loadParentalMetrics(childId);
+      if (cancelled) return;
+      // Utamakan data cloud; fallback AsyncStorage lama
+      const fromDb = {
+        motherHeightCm: child.mother_height_cm ?? undefined,
+        fatherHeightCm: child.father_height_cm ?? undefined,
+        motherWeightKg: child.mother_weight_kg ?? undefined,
+        fatherWeightKg: child.father_weight_kg ?? undefined,
+        motherBlood: (child.mother_blood as '' | 'A' | 'B' | 'AB' | 'O') || '',
+        fatherBlood: (child.father_blood as '' | 'A' | 'B' | 'AB' | 'O') || '',
+        childBlood: (child.child_blood as '' | 'A' | 'B' | 'AB' | 'O') || '',
+      };
+      const hasDb =
+        fromDb.motherHeightCm != null ||
+        fromDb.fatherHeightCm != null ||
+        !!fromDb.motherBlood ||
+        !!fromDb.fatherBlood;
+      const combined = hasDb ? fromDb : metrics;
+      if (combined) {
+        const insight = buildParentalInsight(child.gender, combined);
+        setParentalSummary(insight?.summary ?? null);
+      } else {
+        setParentalSummary(null);
+      }
+      if (latest?.height_cm) {
+        const w = estimatedHealthyWeightKg(Number(latest.height_cm));
+        setWeightHint(
+          `Perkiraan berat sehat untuk tinggi ${Number(latest.height_cm).toFixed(1)} cm: sekitar ${w.low}–${w.high} kg (acuan kasar, bukan diagnosis).`
+        );
+      } else {
+        setWeightHint(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [childId, child, latest?.height_cm]);
+
+  if (!childId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScreenHeader title="Detail Anak" onBack={() => navigation.goBack()} />
+        <Text style={styles.empty}>Anak tidak ditemukan.</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (childQuery.isPending) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScreenHeader title="Detail Anak" onBack={() => navigation.goBack()} />
+        <ActivityIndicator
+          color={colors.primary.main}
+          style={{ marginTop: spacing.section }}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!child) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScreenHeader title="Detail Anak" onBack={() => navigation.goBack()} />
+        <Text style={styles.empty}>Data anak tidak tersedia.</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const genderLabel = child.gender === 'female' ? 'Perempuan' : 'Laki-laki';
+  const age = ageLabelFromDob(child.date_of_birth);
+  const dobLabel = new Date(child.date_of_birth).toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScreenHeader
+        title="Profil Anak"
+        onBack={() => navigation.goBack()}
+        rightAction={
+          <TouchableOpacity
+            onPress={async () => {
+              await HapticService.buttonPress();
+              navigation.navigate('EditChildProfile', {
+                childId: child.id,
+                child,
+              });
+            }}
+            hitSlop={12}
+          >
+            <MaterialCommunityIcons
+              name="pencil"
+              size={22}
+              color={colors.primary.main}
+            />
+          </TouchableOpacity>
+        }
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.profileCard}>
+          <View style={styles.avatarContainer}>
+            <MaterialCommunityIcons
+              name={child.gender === 'female' ? 'face-woman' : 'face-man'}
+              size={48}
+              color={colors.primary.main}
+            />
+          </View>
+          <Text style={styles.childName}>{child.name}</Text>
+          <Text style={styles.childInfo}>
+            {genderLabel} · {age}
+          </Text>
+          {stunting ? (
+            <View
+              style={[
+                styles.statusBadge,
+                { backgroundColor: `${stunting.color}22` },
+              ]}
+            >
+              <Text style={[styles.statusText, { color: stunting.color }]}>
+                {stunting.label}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusTextMuted}>Belum ada pengukuran</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <MaterialCommunityIcons
+              name="badge-account"
+              size={20}
+              color={colors.primary.main}
+            />
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+              Identitas
+            </Text>
+          </View>
+          <View style={styles.infoCard}>
+            <InfoRow label="Nama Lengkap" value={child.name} />
+            <InfoRow label="Jenis Kelamin" value={genderLabel} />
+            <InfoRow label="Tanggal Lahir" value={dobLabel} />
+            <InfoRow label="Usia Saat Ini" value={age} />
+            {child.birth_weight != null ? (
+              <InfoRow
+                label="Berat Lahir"
+                value={`${Number(child.birth_weight).toFixed(2)} kg`}
+              />
+            ) : null}
+            {child.birth_height != null ? (
+              <InfoRow
+                label="Tinggi Lahir"
+                value={`${Number(child.birth_height).toFixed(1)} cm`}
+              />
+            ) : null}
+          </View>
+        </View>
+
+        {(parentalSummary || weightHint) && (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <MaterialCommunityIcons
+                name="calculator-variant"
+                size={20}
+                color={colors.primary.main}
+              />
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                Perhitungan Orang Tua
+              </Text>
+            </View>
+            <View style={styles.infoCard}>
+              {parentalSummary ? (
+                <Text style={styles.emptyInline}>{parentalSummary}</Text>
+              ) : null}
+              {weightHint ? (
+                <Text style={[styles.emptyInline, { marginTop: spacing.sm }]}>
+                  {weightHint}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pengukuran Terakhir</Text>
+          {latestLoading ? (
+            <ActivityIndicator color={colors.primary.main} />
+          ) : !latest ? (
+            <Text style={styles.emptyInline}>Belum ada pengukuran</Text>
+          ) : (
+            <>
+              <View style={styles.measurementGrid}>
+                <MeasurementCard
+                  icon="scale-bathroom"
+                  label="Berat Badan"
+                  value={
+                    latest.weight_kg != null
+                      ? `${Number(latest.weight_kg).toFixed(1)} kg`
+                      : '—'
+                  }
+                />
+                <MeasurementCard
+                  icon="human-male-height"
+                  label="Tinggi Badan"
+                  value={`${Number(latest.height_cm).toFixed(1)} cm`}
+                />
+              </View>
+              <View style={styles.measurementCard}>
+                <MaterialCommunityIcons
+                  name="head"
+                  size={22}
+                  color={colors.primary.main}
+                />
+                <View style={styles.measurementInfo}>
+                  <Text style={styles.measurementLabel}>Lingkar Kepala</Text>
+                  <Text style={styles.measurementValue}>
+                    {latest.head_circumference_cm != null
+                      ? `${Number(latest.head_circumference_cm).toFixed(1)} cm`
+                      : '—'}
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Status Pertumbuhan (WHO)</Text>
+          <View style={styles.growthCard}>
+            {!latest ? (
+              <Text style={styles.emptyInline}>Belum ada pengukuran</Text>
+            ) : (
+              <>
+                <View style={styles.growthHeader}>
+                  <Text style={styles.growthTitle}>Analisis WHO</Text>
+                  <View
+                    style={[
+                      styles.growthBadge,
+                      stunting
+                        ? { backgroundColor: `${stunting.color}22` }
+                        : null,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.growthBadgeText,
+                        stunting ? { color: stunting.color } : null,
+                      ]}
+                    >
+                      {stunting?.label ?? '—'}
+                    </Text>
+                  </View>
+                </View>
+
+                {(
+                  [
+                    ['BB/U', latest.z_score_wfa],
+                    ['TB/U', latest.z_score_hfa],
+                    ['BB/TB', latest.z_score_wfh],
+                  ] as const
+                ).map(([label, z]) => (
+                  <View key={label} style={styles.zScoreRow}>
+                    <Text style={styles.zScoreLabel}>{label}</Text>
+                    <View style={styles.zScoreBar}>
+                      <View
+                        style={[
+                          styles.zScoreFill,
+                          {
+                            width: zBarWidth(z),
+                            backgroundColor:
+                              stunting?.color ?? colors.status.success,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.zScoreValue}>
+                      {z != null ? Number(z).toFixed(2) : '—'}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Data Lahir</Text>
+          <View style={styles.infoCard}>
+            <InfoRow
+              label="Berat Lahir"
+              value={
+                child.birth_weight != null
+                  ? `${Number(child.birth_weight).toFixed(2)} kg`
+                  : '—'
+              }
+            />
+            <InfoRow
+              label="Tinggi Lahir"
+              value={
+                child.birth_height != null
+                  ? `${Number(child.birth_height).toFixed(1)} cm`
+                  : '—'
+              }
+            />
+          </View>
+        </View>
+
+        <View style={styles.actions}>
+          <Button
+            title="Ukur Manual"
+            onPress={() =>
+              navigation.navigate('ManualMeasurement', { childId: child.id })
+            }
+            variant="secondary"
+            size="large"
+            style={{ flex: 1 }}
+            fullWidth={false}
+          />
+          <Button
+            title="Lihat Grafik"
+            onPress={() =>
+              navigation.navigate('GrowthChart', { childId: child.id })
+            }
+            size="large"
+            style={{ flex: 1 }}
+            fullWidth={false}
+            icon={
+              <MaterialCommunityIcons
+                name="chart-line"
+                size={18}
+                color={colors.primary.onPrimary}
+              />
+            }
+          />
+        </View>
+      </ScrollView>
+
+      <LiveMeasurementModal
+        visible={liveMeasurementModalVisible}
+        onClose={() => setLiveMeasurementModalVisible(false)}
+      />
+    </SafeAreaView>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.default,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: '#FFFFFF',
-    ...shadows.soft,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.background.default,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-    color: colors.text.primary,
-  },
-  headerTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    color: colors.text.primary,
-  },
-  editButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.pink[50],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editIcon: {
-    fontSize: 20,
-  },
+  container: { flex: 1, backgroundColor: colors.background.default },
   scrollContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl * 2,
+    paddingHorizontal: spacing.containerPadding,
+    paddingTop: spacing.md,
+    paddingBottom: 90,
   },
-  profileCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.xl,
-    padding: spacing.lg,
-    alignItems: 'center',
-    marginBottom: spacing.md,
-    ...shadows.medium,
-  },
+  profileCard: { alignItems: 'center', marginBottom: spacing.section },
   avatarContainer: {
-    width: 100,
-    height: 100,
+    width: 112,
+    height: 112,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.pink[50],
+    backgroundColor: colors.primary.fixed,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  avatarEmoji: {
-    fontSize: 48,
+    marginBottom: spacing.stackGap,
+    borderWidth: 4,
+    borderColor: colors.surface.lowest,
+    ...shadows.diffusion,
   },
   childName: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold as any,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
+    ...typography.styles.headlineLg,
+    color: colors.text.onSurface,
   },
   childInfo: {
-    fontSize: typography.fontSize.md,
+    ...typography.styles.bodyMd,
     color: colors.text.secondary,
-    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
   },
   statusBadge: {
-    backgroundColor: colors.status.success + '20',
+    marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.mid,
   },
   statusText: {
+    fontFamily: typography.fontFamily.semiBold,
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.status.success,
   },
-  section: {
-    marginBottom: spacing.md,
+  statusTextMuted: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+  },
+  section: { marginBottom: spacing.lg },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   sectionTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    color: colors.text.primary,
+    ...typography.styles.buttonText,
+    color: colors.text.onSurface,
     marginBottom: spacing.sm,
   },
   infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.soft,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.diffusion,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
+    borderBottomColor: 'rgba(26, 28, 28, 0.05)',
   },
   infoLabel: {
-    fontSize: typography.fontSize.md,
+    ...typography.styles.labelCaps,
     color: colors.text.secondary,
-    flex: 1,
   },
   infoValue: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.text.primary,
-    flex: 1,
+    ...typography.styles.bodyMd,
+    color: colors.text.onSurface,
+    maxWidth: '55%',
     textAlign: 'right',
   },
-  measurementGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  measurementCardSmall: {
+  measurementGrid: { flexDirection: 'row', gap: spacing.sm },
+  mCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
     alignItems: 'center',
-    ...shadows.soft,
+    gap: spacing.xs,
+    ...shadows.diffusion,
   },
-  measurementIconSmall: {
-    fontSize: 32,
-    marginBottom: spacing.xs,
-  },
-  measurementLabelSmall: {
-    fontSize: typography.fontSize.xs,
+  mLabel: {
+    ...typography.styles.labelCaps,
+    fontSize: 10,
     color: colors.text.secondary,
-    marginBottom: spacing.xs,
   },
-  measurementValueSmall: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  statusDotSmall: {
-    width: 8,
-    height: 8,
-    borderRadius: borderRadius.full,
+  mValue: {
+    ...typography.styles.buttonText,
+    color: colors.primary.main,
   },
   measurementCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    ...shadows.soft,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    ...shadows.diffusion,
   },
-  measurementIcon: {
-    fontSize: 32,
-    marginRight: spacing.sm,
-  },
-  measurementInfo: {
-    flex: 1,
-  },
+  measurementInfo: { flex: 1 },
   measurementLabel: {
-    fontSize: typography.fontSize.sm,
+    ...typography.styles.labelCaps,
+    fontSize: 10,
     color: colors.text.secondary,
-    marginBottom: spacing.xs / 2,
   },
   measurementValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold as any,
-    color: colors.text.primary,
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: borderRadius.full,
+    ...typography.styles.buttonText,
+    color: colors.text.onSurface,
   },
   growthCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.soft,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.diffusion,
   },
   growthHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: spacing.md,
   },
   growthTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.text.primary,
+    ...typography.styles.buttonText,
+    color: colors.text.onSurface,
   },
   growthBadge: {
-    backgroundColor: colors.status.success + '20',
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs / 2,
-    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.mid,
   },
   growthBadgeText: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.status.success,
+    ...typography.styles.labelCaps,
+    fontSize: 10,
   },
   zScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
   zScoreLabel: {
-    fontSize: typography.fontSize.sm,
+    width: 48,
+    ...typography.styles.labelCaps,
+    fontSize: 10,
     color: colors.text.secondary,
-    marginBottom: spacing.xs / 2,
   },
   zScoreBar: {
+    flex: 1,
     height: 8,
-    backgroundColor: colors.background.default,
-    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.mid,
+    borderRadius: borderRadius.DEFAULT,
     overflow: 'hidden',
-    marginBottom: spacing.xs / 2,
   },
-  zScoreFill: {
-    height: '100%',
-    borderRadius: borderRadius.full,
-  },
+  zScoreFill: { height: '100%', borderRadius: borderRadius.DEFAULT },
   zScoreValue: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.text.primary,
+    width: 44,
     textAlign: 'right',
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  viewFullLink: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.pink.main,
-  },
-  miniChart: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: spacing.xl,
-    alignItems: 'center',
-    ...shadows.soft,
-  },
-  chartPlaceholder: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold as any,
-    color: colors.text.secondary,
-    marginBottom: spacing.xs,
-  },
-  chartSubtext: {
+    fontFamily: typography.fontFamily.semiBold,
     fontSize: typography.fontSize.xs,
-    color: colors.text.tertiary,
+    color: colors.text.onSurface,
   },
-  actionButtons: {
+  actions: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    ...shadows.standard,
+  empty: {
+    textAlign: 'center',
+    marginTop: spacing.section,
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
   },
-  primaryButton: {
-    backgroundColor: colors.pink.main,
-  },
-  secondaryButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: colors.pink.main,
-  },
-  actionButtonIcon: {
-    fontSize: 20,
-    marginRight: spacing.xs,
-  },
-  primaryButtonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold as any,
-    color: '#FFFFFF',
-  },
-  secondaryButtonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold as any,
-    color: colors.pink.main,
+  emptyInline: {
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
   },
 });

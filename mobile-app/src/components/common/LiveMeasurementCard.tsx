@@ -14,8 +14,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import MQTTService from '../../services/MQTTService';
 import type { MQTTMeasurement } from '../../types';
-import { colors, spacing, typography, borderRadius } from '../../theme';
-import {
+import { colors, spacing, typography, borderRadius, shadows } from '../../theme';import {
   useLatestMeasurement,
   getStuntingDisplay,
 } from '../../hooks/useMeasurements';
@@ -193,7 +192,7 @@ export function LiveMeasurementCard({
     <View style={styles.container}>
       <Animated.View style={[styles.glowContainer, glowStyle]}>
         <LinearGradient
-          colors={['rgba(182, 0, 89, 0.35)', 'rgba(182, 0, 89, 0)']}
+          colors={[colors.effects.primaryGlow, colors.effects.glassWhite]}
           style={styles.glow}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
@@ -202,7 +201,7 @@ export function LiveMeasurementCard({
 
       <BlurView intensity={50} tint="light" style={styles.blurCard}>
         <LinearGradient
-          colors={['rgba(255, 255, 255, 0.95)', colors.primary.fixed]}
+          colors={[colors.surface.lowest, colors.primary.fixed]}
           style={styles.gradient}
         >
           <View style={styles.header}>
@@ -222,7 +221,7 @@ export function LiveMeasurementCard({
             <View style={styles.headerText}>
               <Text style={styles.title}>Live Sensor</Text>
               <Text style={styles.subtitle}>
-                {isConnected ? 'MQTT · sync Supabase' : 'Tidak Terhubung'}
+                {isConnected ? 'Terhubung · tersinkron' : 'Tidak Terhubung'}
                 {isFetching ? ' · syncing…' : ''}
               </Text>
             </View>
@@ -334,13 +333,13 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     ...typography.styles.headlineLgMobile,
-    fontSize: 18,
+    fontSize: typography.fontSize.lg,
     color: colors.primary.main,
     marginBottom: spacing.xs,
   },
   emptySubtitle: {
     ...typography.styles.bodyMd,
-    fontSize: 14,
+    fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
   },
   waitingBox: {
@@ -388,21 +387,21 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginRight: spacing.sm,
   },
-  icon: { fontSize: 32 },
+  icon: { fontSize: typography.fontSize.xxxl },
   statusDot: {
     position: 'absolute',
     top: 0,
-    right: -2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    right: 0,
+    width: spacing.element,
+    height: spacing.element,
+    borderRadius: borderRadius.sm,
     borderWidth: 2,
     borderColor: colors.neutral.white,
   },
   headerText: { flex: 1 },
   title: {
     ...typography.styles.headlineLgMobile,
-    fontSize: 18,
+    fontSize: typography.fontSize.lg,
     color: colors.text.onSurface,
   },
   subtitle: {
@@ -432,10 +431,8 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   value: {
-    fontSize: typography.fontSize.display,
-    fontWeight: typography.fontWeight.extraBold,
+    ...typography.styles.displayLg,
     color: colors.primary.main,
-    letterSpacing: -2,
   },
   unit: {
     fontSize: typography.fontSize.xl,
@@ -469,7 +466,7 @@ const styles = StyleSheet.create({
   zLabel: {
     fontSize: typography.fontSize.xs,
     color: colors.text.secondary,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   zValue: {
     fontSize: typography.fontSize.lg,

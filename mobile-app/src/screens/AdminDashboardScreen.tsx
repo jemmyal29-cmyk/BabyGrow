@@ -1,596 +1,537 @@
 /**
- * Admin Dashboard Screen (Medical Command Center)
- * Clean 3D Design with Deep Pink/Navy Theme
+ * Admin Dashboard — Officer Dashboard / Posyandu (desainuiux.md)
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Dimensions,
+  TextInput,
   Pressable,
   Alert,
+  useWindowDimensions,
+  RefreshControl,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { FlashList } from '@shopify/flash-list';
-import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
-import { useAuth } from '../store/authStore';
-import { SkeletonLoader } from '../components/common';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth, useIsAdmin } from '../store/authStore';
+import { SkeletonLoader, SyncStatusIndicator } from '../components/common';
+import { AdminStatsCard } from '../components/common/AdminStatsCard';
+import {
+  WelcomeHeader,
+  HeroStatusBanner,
+  QuickMenuTile,
+  SectionHeading,
+  RiskPill,
+} from '../components/common/DashboardUI';
+import {
+  useAdminDashboardStats,
+  useFilteredAdminChildren,
+  type AdminChildRow,
+} from '../hooks/useAdminDashboard';
+import {
+  runSystemHealthCheck,
+  type SystemHealthReport,
+  type HealthStatus,
+} from '../services/SystemHealthService';
+import { exportCsvAndShare } from '../utils/csvExport';
+import { ageLabelFromDob } from '../hooks/useChildren';
 import HapticService from '../services/HapticService';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
-const { width } = Dimensions.get('window');
+const STATUS_COLOR: Record<HealthStatus, string> = {
+  ok: colors.status.success,
+  warn: colors.status.warning,
+  fail: colors.status.error,
+};
 
-interface StatCard {
-  id: string;
-  icon: string;
-  label: string;
-  value: number;
-  change: string;
-  trend: 'up' | 'down';
-  color: string;
+function riskMeta(risk?: string | null) {
+  switch (risk) {
+    case 'normal':
+      return { label: 'Normal', color: colors.stunting.normal };
+    case 'at_risk':
+      return { label: 'At Risk', color: colors.stunting.atRisk };
+    case 'stunted':
+      return { label: 'Stunting', color: colors.stunting.stunted };
+    case 'severe':
+      return { label: 'Severe', color: colors.stunting.severelyStunted };
+    default:
+      return { label: 'Belum ukur', color: colors.text.secondary };
+  }
 }
 
-interface ParentData {
-  id: string;
-  name: string;
-  childrenCount: number;
-  stuntingCount: number;
-  lastVisit: string;
-  status: 'active' | 'alert' | 'inactive';
+function formatAgo(iso?: string | null): string {
+  if (!iso) return 'Belum ada update';
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const h = Math.floor(diff / 3600000);
+    if (h < 1) return 'Baru saja';
+    if (h < 24) return `Updated ${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `Updated ${d}d ago`;
+  } catch {
+    return '—';
+  }
 }
 
 export default function AdminDashboardScreen({ navigation }: any) {
   const { user } = useAuth();
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'parents' | 'mbg'>('overview');
-  const [isLoading, setIsLoading] = useState(true);
+  const isAdmin = useIsAdmin();
+  const { width } = useWindowDimensions();
+  const pad = spacing.containerPadding;
+  const gap = spacing.stackGap;
+  const cardW = Math.max(140, (width - pad * 2 - gap) / 2);
 
-  // Simulate data loading
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1200);
-    return () => clearTimeout(timer);
-  }, []);
+  const [search, setSearch] = useState('');
+  const [health, setHealth] = useState<SystemHealthReport | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  // Navigation Handlers
-  const handleParentDetail = async (parentId: string) => {
+  const statsQuery = useAdminDashboardStats(isAdmin);
+  const childrenQuery = useFilteredAdminChildren(search, isAdmin);
+  const stats = statsQuery.data;
+
+  const heroBadge =
+    health?.overall === 'fail'
+      ? 'Regional Status: Attention'
+      : health?.overall === 'warn'
+        ? 'Regional Status: Watch'
+        : 'Regional Status: Good';
+
+  const onRefresh = async () => {
+    await Promise.all([statsQuery.refetch(), childrenQuery.refetch()]);
+  };
+
+  const runHealth = async () => {
     await HapticService.buttonPress();
-    Alert.alert(
-      'Detail Orang Tua',
-      `Menampilkan detail data orang tua dengan ID: ${parentId}`,
-      [{ text: 'OK' }]
-    );
-    // TODO: navigation.navigate('ParentDetail', { parentId });
+    setHealthLoading(true);
+    try {
+      const report = await runSystemHealthCheck();
+      setHealth(report);
+      if (report.overall === 'ok') await HapticService.success();
+      else await HapticService.warning();
+    } catch (e) {
+      Alert.alert(
+        'Health Check Gagal',
+        e instanceof Error ? e.message : 'Unknown error'
+      );
+    } finally {
+      setHealthLoading(false);
+    }
   };
 
-  const handleStatPress = async (statLabel: string) => {
-    await HapticService.light();
-    Alert.alert('Statistik', `Melihat detail ${statLabel}`);
+  const exportCsv = async () => {
+    await HapticService.buttonPress();
+    const rows = childrenQuery.filtered;
+    if (rows.length === 0) {
+      Alert.alert('Export', 'Tidak ada data balita untuk diekspor.');
+      return;
+    }
+    setExporting(true);
+    try {
+      await exportCsvAndShare({
+        filename: `babygrow-balita-${new Date().toISOString().slice(0, 10)}.csv`,
+        headers: [
+          'id',
+          'name',
+          'gender',
+          'date_of_birth',
+          'parent_name',
+          'parent_email',
+          'latest_height_cm',
+          'latest_weight_kg',
+          'latest_risk',
+          'latest_measured_at',
+        ],
+        rows: rows.map((c) => ({
+          id: c.id,
+          name: c.name,
+          gender: c.gender,
+          date_of_birth: c.date_of_birth,
+          parent_name: c.parent_name ?? '',
+          parent_email: c.parent_email ?? '',
+          latest_height_cm: c.latest_height ?? '',
+          latest_weight_kg: c.latest_weight ?? '',
+          latest_risk: c.latest_risk ?? '',
+          latest_measured_at: c.latest_measured_at ?? '',
+        })),
+      });
+      await HapticService.success();
+    } catch (e) {
+      Alert.alert(
+        'Export gagal',
+        e instanceof Error ? e.message : 'Tidak dapat membagikan CSV'
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
-  // Mock Statistics
-  const stats: StatCard[] = [
-    {
-      id: '1',
-      icon: '👶',
-      label: 'Total Balita',
-      value: 342,
-      change: '+12',
-      trend: 'up',
-      color: '#4CAF50',
-    },
-    {
-      id: '2',
-      icon: '⚠️',
-      label: 'Stunting',
-      value: 47,
-      change: '-3',
-      trend: 'down',
-      color: '#FF9800',
-    },
-    {
-      id: '3',
-      icon: '✅',
-      label: 'Gizi Baik',
-      value: 295,
-      change: '+15',
-      trend: 'up',
-      color: '#2196F3',
-    },
-    {
-      id: '4',
-      icon: '🥘',
-      label: 'MBG Aktif',
-      value: 89,
-      change: '+8',
-      trend: 'up',
-      color: '#9C27B0',
-    },
-  ];
+  const openChild = async (child: AdminChildRow) => {
+    await HapticService.buttonPress();
+    navigation.navigate('ChildDetail', { childId: child.id });
+  };
 
-  // Mock Parents Data
-  const parentsData: ParentData[] = [
-    {
-      id: 'p001',
-      name: 'Ibu Sari',
-      childrenCount: 2,
-      stuntingCount: 1,
-      lastVisit: '2 hari lalu',
-      status: 'alert',
-    },
-    {
-      id: 'p002',
-      name: 'Ibu Dewi',
-      childrenCount: 1,
-      stuntingCount: 0,
-      lastVisit: '1 minggu lalu',
-      status: 'active',
-    },
-    {
-      id: 'p003',
-      name: 'Ibu Rita',
-      childrenCount: 3,
-      stuntingCount: 0,
-      lastVisit: '3 hari lalu',
-      status: 'active',
-    },
-    {
-      id: 'p004',
-      name: 'Ibu Maya',
-      childrenCount: 1,
-      stuntingCount: 1,
-      lastVisit: '1 bulan lalu',
-      status: 'inactive',
-    },
-  ];
-
-  const renderStatCard = ({ item, index }: { item: StatCard; index: number }) => (
-    <Animated.View entering={FadeInRight.delay(index * 100).duration(600)}>
-      <Pressable onPress={() => handleStatPress(item.label)}>
-        <LinearGradient
-          colors={['#FFFFFF', '#F8F9FA']}
-          style={styles.statCard}
-        >
-        <View style={styles.statHeader}>
-          <View style={[styles.statIcon, { backgroundColor: `${item.color}20` }]}>
-            <Text style={styles.statEmoji}>{item.icon}</Text>
-          </View>
-          <View style={[styles.trendBadge, { backgroundColor: item.trend === 'up' ? '#E8F5E9' : '#FFF3E0' }]}>
-            <Text style={[styles.trendText, { color: item.trend === 'up' ? '#4CAF50' : '#FF9800' }]}>
-              {item.change}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.statValue}>{item.value}</Text>
-        <Text style={styles.statLabel}>{item.label}</Text>
-      </LinearGradient>
-      </Pressable>
-    </Animated.View>
-  );
-
-  const renderParentItem = ({ item }: { item: ParentData }) => (
-    <Pressable 
-      style={styles.parentCard} 
-      android_ripple={{ color: '#E0E0E0' }}
-      onPress={() => handleParentDetail(item.id)}
-    >
-      <View style={styles.parentHeader}>
-        <View style={[styles.statusDot, { backgroundColor: 
-          item.status === 'alert' ? '#FF9800' : 
-          item.status === 'active' ? '#4CAF50' : '#9E9E9E' 
-        }]} />
-        <Text style={styles.parentName}>{item.name}</Text>
-      </View>
-      <View style={styles.parentStats}>
-        <View style={styles.parentStatItem}>
-          <Text style={styles.parentStatLabel}>Anak</Text>
-          <Text style={styles.parentStatValue}>{item.childrenCount}</Text>
-        </View>
-        <View style={styles.parentStatItem}>
-          <Text style={styles.parentStatLabel}>Stunting</Text>
-          <Text style={[styles.parentStatValue, { color: item.stuntingCount > 0 ? '#FF9800' : '#4CAF50' }]}>
-            {item.stuntingCount}
-          </Text>
-        </View>
-        <View style={styles.parentStatItem}>
-          <Text style={styles.parentStatLabel}>Kunjungan</Text>
-          <Text style={styles.parentStatValueSmall}>{item.lastVisit}</Text>
-        </View>
-      </View>
-      <View style={styles.viewDetailsButton}>
-        <Text style={styles.viewDetailsText}>Lihat Detail →</Text>
-      </View>
-    </Pressable>
-  );
-
-  return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#1A237E', '#283593', '#3949AB']}
-        style={styles.headerGradient}
-      >
-        <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
-          <View>
-            <Text style={styles.headerGreeting}>Command Center</Text>
-            <Text style={styles.headerSubtitle}>
-              {user?.location?.puskesmas || 'Puskesmas'} • {user?.location?.city || 'Jakarta'}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.adminAvatar}>
-            <Text style={styles.adminAvatarEmoji}>{user?.avatar || '👨‍⚕️'}</Text>
-          </TouchableOpacity>
+  const listHeader = useMemo(
+    () => (
+      <View>
+        <Animated.View entering={FadeInDown.duration(400)}>
+          <WelcomeHeader
+            name={user?.name || 'Petugas'}
+            right={
+              <View style={styles.notifBtn}>
+                <SyncStatusIndicator compact />
+              </View>
+            }
+          />
         </Animated.View>
 
-        {/* Tabs */}
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'overview' && styles.tabActive]}
-            onPress={() => setSelectedTab('overview')}
-          >
-            <Text style={[styles.tabText, selectedTab === 'overview' && styles.tabTextActive]}>
-              Overview
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'parents' && styles.tabActive]}
-            onPress={() => setSelectedTab('parents')}
-          >
-            <Text style={[styles.tabText, selectedTab === 'parents' && styles.tabTextActive]}>
-              Data Orang Tua
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, selectedTab === 'mbg' && styles.tabActive]}
-            onPress={() => setSelectedTab('mbg')}
-          >
-            <Text style={[styles.tabText, selectedTab === 'mbg' && styles.tabTextActive]}>
-              MBG Monitor
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+        <HeroStatusBanner
+          badge={heroBadge}
+          body={
+            health
+              ? `System monitoring · ${health.overall.toUpperCase()} · ${user?.location?.puskesmas || 'Puskesmas'}`
+              : `System monitoring aktif · ${user?.location?.puskesmas || 'Puskesmas'}`
+          }
+        />
 
-      <View style={styles.content}>
-        {selectedTab === 'overview' && (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <Text style={styles.sectionTitle}>Statistik Ringkasan</Text>
-            {isLoading ? (
-              <View style={styles.statsGrid}>
-                <SkeletonLoader variant="stat" count={4} />
-              </View>
-            ) : (
-              <View style={styles.statsGrid}>
-                {stats.map((stat, index) => (
-                  <View key={stat.id} style={{ width: (width - 60) / 2 }}>
-                    {renderStatCard({ item: stat, index })}
-                  </View>
-                ))}
-              </View>
-            )}
-          </ScrollView>
-        )}
-
-        {selectedTab === 'parents' && (
-          <View style={styles.listContainer}>
-            <View style={styles.listHeader}>
-              <Text style={styles.sectionTitle}>Manajemen Orang Tua</Text>
-              <TouchableOpacity style={styles.addButton}>
-                <Text style={styles.addButtonText}>+ Tambah</Text>
-              </TouchableOpacity>
-            </View>
-            {isLoading ? (
-              <View style={{ padding: 16 }}>
-                <SkeletonLoader variant="list" count={5} />
-              </View>
-            ) : (
-              <FlashList
-                data={parentsData}
-                renderItem={renderParentItem}
-                showsVerticalScrollIndicator={false}
+        {statsQuery.isPending ? (
+          <SkeletonLoader variant="stat" count={4} style={{ padding: 0 }} />
+        ) : (
+          <View style={styles.statsGrid}>
+            <View style={{ width: cardW }}>
+              <AdminStatsCard
+                icon="baby-face-outline"
+                label="Total Balita"
+                value={stats?.totalChildren ?? 0}
+                onPress={() => navigation.navigate('Children')}
               />
-            )}
+            </View>
+            <View style={{ width: cardW }}>
+              <AdminStatsCard
+                icon="alert"
+                label="Stunting Risk"
+                value={stats?.stuntingCount ?? 0}
+                emphasize
+                onPress={() => setSearch('')}
+              />
+            </View>
+            <View style={{ width: cardW }}>
+              <AdminStatsCard
+                icon="ruler"
+                label="Ukur Hari Ini"
+                value={stats?.measurementsToday ?? 0}
+                accentColor={colors.status.info}
+              />
+            </View>
+            <View style={{ width: cardW }}>
+              <AdminStatsCard
+                icon="alert-circle-outline"
+                label="Berisiko"
+                value={stats?.atRiskCount ?? 0}
+                accentColor={colors.stunting.atRisk}
+              />
+            </View>
           </View>
         )}
 
-        {selectedTab === 'mbg' && (
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <Text style={styles.sectionTitle}>Monitor MBG (Makan Bergizi Gratis)</Text>
-            <View style={styles.mbgCard}>
-              <Text style={styles.mbgTitle}>Penyaluran Bulan Ini</Text>
-              <Text style={styles.mbgValue}>89 Balita</Text>
-              <View style={styles.mbgProgress}>
-                <View style={[styles.mbgProgressBar, { width: '75%' }]} />
-              </View>
-              <Text style={styles.mbgPercentage}>75% dari target</Text>
-            </View>
+        <SectionHeading title="Quick Menu" />
+        <View style={styles.menuGrid}>
+          <QuickMenuTile
+            icon="account-plus"
+            label="Tambah Data"
+            primary
+            onPress={() => navigation.navigate('AddChild')}
+          />
+          <QuickMenuTile
+            icon="file-export-outline"
+            label={exporting ? 'Export…' : 'Export CSV'}
+            onPress={exportCsv}
+          />
+          <QuickMenuTile
+            icon="heart-pulse"
+            label={healthLoading ? 'Cek…' : 'System Health'}
+            onPress={runHealth}
+          />
+          <QuickMenuTile
+            icon="robot-outline"
+            label="AI Asisten"
+            onPress={() => navigation.navigate('AIAssistant')}
+          />
+        </View>
 
-            <View style={styles.mbgCard}>
-              <Text style={styles.mbgTitle}>Menu Populer</Text>
-              <View style={styles.mbgMenuItem}>
-                <Text style={styles.mbgMenuEmoji}>🥘</Text>
+        {health ? (
+          <View style={styles.healthPanel}>
+            <Text style={styles.healthTitle}>
+              System Health ·{' '}
+              <Text style={{ color: STATUS_COLOR[health.overall] }}>
+                {health.overall.toUpperCase()}
+              </Text>
+            </Text>
+            {health.items.map((item) => (
+              <View key={item.id} style={styles.healthRow}>
+                <View
+                  style={[
+                    styles.healthDot,
+                    { backgroundColor: STATUS_COLOR[item.status] },
+                  ]}
+                />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.mbgMenuName}>Bubur Kacang Hijau + Telur</Text>
-                  <Text style={styles.mbgMenuCount}>32 porsi minggu ini</Text>
+                  <Text style={styles.healthLabel}>{item.label}</Text>
+                  <Text style={styles.healthDetail}>{item.detail}</Text>
                 </View>
               </View>
-              <View style={styles.mbgMenuItem}>
-                <Text style={styles.mbgMenuEmoji}>🍲</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.mbgMenuName}>Sop Ayam Sayuran</Text>
-                  <Text style={styles.mbgMenuCount}>28 porsi minggu ini</Text>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-        )}
+            ))}
+          </View>
+        ) : null}
+
+        {__DEV__ ? (
+          <View style={styles.seedBanner}>
+            <Text style={styles.seedTitle}>Seed Smoke Test</Text>
+            <Text style={styles.seedBody}>
+              WHO: {stats?.whoStandardsCount ?? '—'} · Resep:{' '}
+              {stats?.recipesCount ?? '—'}
+            </Text>
+          </View>
+        ) : null}
+
+        <SectionHeading
+          title="Recent Activity"
+          actionLabel="View All"
+          onAction={() => navigation.navigate('Children')}
+        />
+
+        <TextInput
+          style={styles.search}
+          placeholder="Cari nama anak / orang tua…"
+          placeholderTextColor={colors.text.disabled}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+        />
       </View>
-    </View>
+    ),
+    [
+      user,
+      stats,
+      statsQuery.isPending,
+      health,
+      healthLoading,
+      exporting,
+      search,
+      cardW,
+      heroBadge,
+    ]
+  );
+
+  if (!isAdmin) {
+    return (
+      <View style={styles.denied}>
+        <Text style={styles.deniedText}>Halaman ini khusus untuk petugas.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <FlashList
+        data={childrenQuery.filtered}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={listHeader}
+        refreshControl={
+          <RefreshControl
+            refreshing={statsQuery.isFetching && !statsQuery.isPending}
+            onRefresh={onRefresh}
+            tintColor={colors.primary.main}
+          />
+        }
+        ListEmptyComponent={
+          childrenQuery.isPending ? (
+            <SkeletonLoader variant="list" count={4} />
+          ) : (
+            <Text style={styles.empty}>Tidak ada balita yang cocok.</Text>
+          )
+        }
+        renderItem={({ item }) => {
+          const risk = riskMeta(item.latest_risk);
+          return (
+            <Pressable
+              style={({ pressed }) => [
+                styles.childCard,
+                pressed && { opacity: 0.92 },
+              ]}
+              onPress={() => openChild(item)}
+            >
+              <View style={styles.childLeft}>
+                <View style={styles.avatar}>
+                  <MaterialCommunityIcons
+                    name={item.gender === 'female' ? 'face-woman' : 'face-man'}
+                    size={22}
+                    color={colors.primary.main}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.childName}>{item.name}</Text>
+                  <Text style={styles.childMeta}>
+                    {ageLabelFromDob(item.date_of_birth)} ·{' '}
+                    {formatAgo(item.latest_measured_at)}
+                  </Text>
+                  <Text style={styles.childMeta} numberOfLines={1}>
+                    {item.parent_name || '—'}
+                  </Text>
+                </View>
+              </View>
+              <RiskPill label={risk.label} color={risk.color} />
+            </Pressable>
+          );
+        }}
+        contentContainerStyle={styles.listContent}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.background.default,
   },
-  headerGradient: {
-    paddingTop: 60,
-    paddingBottom: 16,
+  listContent: {
+    paddingHorizontal: spacing.containerPadding,
+    paddingBottom: spacing.xxl + 72,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  headerGreeting: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  adminAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  adminAvatarEmoji: {
-    fontSize: 28,
-  },
-  tabs: {
-    flexDirection: 'row',
-    paddingHorizontal: 24,
-    gap: 8,
-  },
-  tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-  },
-  tabActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.6)',
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
-  },
-  content: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-  },
-  scrollContent: {
-    padding: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 16,
+  notifBtn: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.lowest,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    ...shadows.diffusion,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
+    gap: spacing.stackGap,
+    marginBottom: spacing.section,
   },
-  statCard: {
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  statHeader: {
+  menuGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: spacing.stackGap,
+    marginBottom: spacing.section,
   },
-  statIcon: {
+  healthPanel: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.diffusion,
+  },
+  healthTitle: {
+    fontFamily: typography.fontFamily.bold,
+    marginBottom: spacing.sm,
+    color: colors.text.onSurface,
+  },
+  healthRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  healthDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 4,
+  },
+  healthLabel: {
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.text.onSurface,
+  },
+  healthDetail: {
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
+  },
+  seedBanner: {
+    backgroundColor: colors.primary.fixed,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  seedTitle: {
+    fontFamily: typography.fontFamily.bold,
+    color: colors.primary.onFixed,
+    marginBottom: 4,
+  },
+  seedBody: {
+    color: colors.text.secondary,
+    fontSize: typography.fontSize.sm,
+  },
+  search: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border.input,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+    color: colors.text.onSurface,
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+  },
+  childCard: {
+    backgroundColor: 'rgba(255,255,255,0.55)',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.element,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  childLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  avatar: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary.fixed,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  statEmoji: {
-    fontSize: 24,
+  childName: {
+    ...typography.styles.buttonText,
+    color: colors.text.onSurface,
   },
-  trendBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+  childMeta: {
+    ...typography.styles.labelCaps,
+    letterSpacing: 0,
+    textTransform: 'none',
+    color: colors.text.secondary,
+    marginTop: 2,
   },
-  trendText: {
-    fontSize: 12,
-    fontWeight: '700',
+  empty: {
+    textAlign: 'center',
+    color: colors.text.secondary,
+    paddingVertical: spacing.xl,
   },
-  statValue: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  listContainer: {
+  denied: {
     flex: 1,
-    padding: 24,
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: colors.background.default,
   },
-  addButton: {
-    backgroundColor: '#FF69B4',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  parentCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  parentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  parentName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-  },
-  parentStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  parentStatItem: {
-    alignItems: 'center',
-  },
-  parentStatLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
-  },
-  parentStatValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-  },
-  parentStatValueSmall: {
-    fontSize: 12,
-    color: '#666',
-  },
-  viewDetailsButton: {
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    paddingTop: 12,
-    alignItems: 'center',
-  },
-  viewDetailsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FF69B4',
-  },
-  mbgCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  mbgTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 12,
-  },
-  mbgValue: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FF69B4',
-    marginBottom: 16,
-  },
-  mbgProgress: {
-    height: 8,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 4,
-    marginBottom: 8,
-    overflow: 'hidden',
-  },
-  mbgProgressBar: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 4,
-  },
-  mbgPercentage: {
-    fontSize: 14,
-    color: '#666',
-  },
-  mbgMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  mbgMenuEmoji: {
-    fontSize: 32,
-    marginRight: 12,
-  },
-  mbgMenuName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  mbgMenuCount: {
-    fontSize: 12,
-    color: '#666',
+  deniedText: {
+    color: colors.status.error,
+    fontFamily: typography.fontFamily.semiBold,
   },
 });

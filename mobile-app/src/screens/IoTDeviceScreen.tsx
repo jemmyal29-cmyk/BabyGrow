@@ -12,7 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '../theme';
+import {colors, typography, spacing, borderRadius, shadows} from '../theme';
 import { CommonActions } from '@react-navigation/native';
 
 export default function IoTDeviceScreen({ navigation }: any) {
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backIcon: {
-    fontSize: 24,
+    fontSize: typography.fontSize.xl,
     color: colors.neutral.white,
   },
   headerTitle: {
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   },
   statusBanner: {
     flexDirection: 'row',
-    backgroundColor: '#FFF3CD',
+    backgroundColor: colors.primary.fixed,
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     marginTop: spacing.md,
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.status.warning,
   },
   statusIcon: {
-    fontSize: 32,
+    fontSize: typography.fontSize.xxxl,
     marginRight: spacing.sm,
   },
   statusTextContainer: {
@@ -257,14 +257,10 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
     marginTop: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...shadows.soft,
   },
   manualInputIcon: {
-    fontSize: 40,
+    fontSize: typography.fontSize.display,
     marginRight: spacing.md,
   },
   manualInputContent: {
@@ -282,7 +278,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   manualInputArrow: {
-    fontSize: 32,
+    fontSize: typography.fontSize.xxxl,
     color: colors.neutral.white,
     fontWeight: typography.fontWeight.bold,
   },
@@ -314,7 +310,7 @@ const styles = StyleSheet.create({
   stepNumber: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: borderRadius.md,
     backgroundColor: colors.primary.main,
     justifyContent: 'center',
     alignItems: 'center',
@@ -348,7 +344,7 @@ const styles = StyleSheet.create({
     color: colors.neutral.white,
   },
   infoCard: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: colors.surface.low,
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
     marginTop: spacing.md,

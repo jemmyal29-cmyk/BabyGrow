@@ -1,451 +1,366 @@
 /**
- * Guide Screen - Panduan Penggunaan Aplikasi
+ * Guide Screen — panduan awam, tanpa jargon teknis
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '../theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { Button, ScreenHeader } from '../components/common';
 
-const GUIDE_SECTIONS = [
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+type GuideBlock = {
+  id: string;
+  title: string;
+  summary: string;
+  steps: string[];
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+};
+
+const GUIDES: GuideBlock[] = [
   {
-    icon: '🏠',
-    title: 'Menu Beranda',
-    content: 'Lihat ringkasan status kesehatan anak, akses fitur cepat, dan notifikasi penting.',
+    id: 'start',
+    title: 'Mulai Pakai BabyGrow',
+    summary: 'Dari daftar sampai siap memantau anak.',
+    icon: 'rocket-launch-outline',
+    steps: [
+      'Daftar akun orang tua, atau masuk jika sudah punya akun.',
+      'Setelah masuk, tambahkan data anak di menu Anak.',
+      'Isi juga tinggi & golongan darah orang tua bila ada — membantu perkiraan pertumbuhan.',
+      'Catat pengukuran pertama: manual, alat pintar, atau kamera AI.',
+    ],
   },
   {
-    icon: '👶',
-    title: 'Profil Anak',
-    content: 'Tambah dan kelola data anak: nama, tanggal lahir, jenis kelamin, berat badan, tinggi badan.',
+    id: 'child',
+    title: 'Data Anak & Orang Tua',
+    summary: 'Apa saja yang perlu diisi.',
+    icon: 'account-child',
+    steps: [
+      'Buka Anak → tombol + → isi nama, tanggal lahir, jenis kelamin.',
+      'Opsional: berat & tinggi saat lahir.',
+      'Isi tinggi ayah & ibu untuk perkiraan tinggi dewasa anak.',
+      'Isi golongan darah orang tua untuk melihat kemungkinan golongan darah anak.',
+    ],
   },
   {
-    icon: '📊',
-    title: 'Grafik Pertumbuhan',
-    content: 'Visualisasi pertumbuhan anak dibandingkan dengan standar WHO (Berat/Umur, Tinggi/Umur).',
+    id: 'measure-manual',
+    title: 'Ukur Manual (tanpa alat)',
+    summary: 'Pakai meteran & timbangan biasa di rumah.',
+    icon: 'scale-bathroom',
+    steps: [
+      'Pilih anak yang akan diukur.',
+      'Buka Ukur Manual dari Beranda.',
+      'Timbang anak (kg) dan ukur tinggi berdiri/berbaring (cm).',
+      'Simpan — aplikasi otomatis menghitung status menurut standar WHO.',
+    ],
   },
   {
-    icon: '🤖',
-    title: 'AI Analisis',
-    content: 'Chat dengan AI untuk analisis kesehatan, saran nutrisi, dan deteksi risiko stunting.',
+    id: 'iot',
+    title: 'Ukur Otomatis (Alat Pintar)',
+    summary: 'Cara menyambungkan alat BabyGrow — bahasa sederhana.',
+    icon: 'bluetooth',
+    steps: [
+      'Siapkan alat BabyGrow dan hidupkan (lampu indikator menyala).',
+      'Aktifkan Bluetooth di HP Anda.',
+      'Di Beranda, ketuk Ukur Otomatis.',
+      'Tunggu hingga HP menemukan alat (biasanya tertulis BabyGrow).',
+      'Jika muncul “Terhubung”, letakkan anak di alat sesuai panduan petugas.',
+      'Angka tinggi/berat akan muncul di HP. Pastikan anak tenang agar hasil akurat.',
+      'Catatan: Bluetooth = sambungan dekat (HP & alat berdekatan). Wi‑Fi/internet dipakai agar data ikut tersimpan ke akun Anda.',
+    ],
   },
   {
-    icon: '📱',
-    title: 'IoT Device',
-    content: 'Hubungkan timbangan digital untuk pengukuran otomatis (dalam pengembangan).',
+    id: 'ai-vision',
+    title: 'Ukur dengan Kamera (AI Vision)',
+    summary: 'Estimasi tinggi dari foto — bantu skrining, bukan pengganti alat ukur.',
+    icon: 'camera-outline',
+    steps: [
+      'Pilih anak aktif di Beranda.',
+      'Buka AI Vision, izinkan akses kamera.',
+      'Posisikan anak tegak di samping alat ukur / dinding yang jelas.',
+      'Ambil foto, tunggu hasil estimasi tinggi.',
+      'Simpan jika hasil masuk akal. Untuk keputusan medis, tetap ukur dengan alat standar.',
+    ],
   },
   {
-    icon: '💉',
-    title: 'Jadwal Imunisasi',
-    content: 'Lihat jadwal vaksin wajib berdasarkan usia anak sesuai program pemerintah.',
+    id: 'chart',
+    title: 'Membaca Grafik Pertumbuhan',
+    summary: 'Pahami kurva WHO dengan mudah.',
+    icon: 'chart-line',
+    steps: [
+      'Buka menu Grafik atau detail anak.',
+      'Titik di grafik = hasil pengukuran Anda.',
+      'Jika posisi jauh di bawah garis normal, sistem menandai risiko — bawa ke petugas/puskesmas.',
+      'Ukur secara berkala agar tren terlihat jelas.',
+    ],
+  },
+  {
+    id: 'mbg',
+    title: 'Resep MBG (Makanan Bergizi)',
+    summary: 'Ide menu lengkap dengan cara memasak.',
+    icon: 'food-apple-outline',
+    steps: [
+      'Buka Resep MBG dari Beranda.',
+      'Pilih resep sesuai usia anak.',
+      'Ikuti daftar bahan dan langkah memasak berurutan.',
+      'Sesuaikan tekstur (halus/cincang) dengan usia anak.',
+    ],
+  },
+  {
+    id: 'petugas',
+    title: 'Panduan untuk Petugas / Perawat',
+    summary: 'Akun petugas puskesmas atau posyandu.',
+    icon: 'badge-account-horizontal-outline',
+    steps: [
+      'Masuk dengan akun petugas yang sudah disiapkan institusi Anda.',
+      'Di dashboard, lihat ringkasan balita, pengukuran hari ini, dan risiko stunting.',
+      'Cari nama anak atau orang tua, buka detail, bantu ukur di lapangan.',
+      'Ekspor data bila diperlukan untuk laporan.',
+      'Bantu orang tua menyambungkan alat dan menjelaskan hasil dengan bahasa sederhana.',
+    ],
+  },
+  {
+    id: 'akun',
+    title: 'Keamanan Akun',
+    summary: 'Jaga data keluarga Anda.',
+    icon: 'shield-lock-outline',
+    steps: [
+      'Gunakan kata sandi minimal 8 karakter.',
+      'Jika lupa, gunakan Lupa Password di layar masuk.',
+      'Jangan bagikan akun petugas kepada orang tua.',
+      'Keluar (logout) setelah memakai perangkat bersama.',
+    ],
+  },
+];
+
+const FAQ = [
+  {
+    q: 'Kenapa tidak bisa masuk setelah daftar?',
+    a: 'Cek email untuk tautan konfirmasi (jika diminta). Pastikan email & kata sandi benar. Masih gagal? Hubungi petugas yang mengelola aplikasi di fasilitas Anda.',
+  },
+  {
+    q: 'Apakah perlu internet?',
+    a: 'Ya untuk masuk dan menyimpan data ke akun. Beberapa pengukuran bisa menunggu sebentar lalu ikut tersimpan saat HP online kembali.',
+  },
+  {
+    q: 'Apa bedanya Bluetooth dan internet pada alat?',
+    a: 'Bluetooth menyambungkan HP ke alat di dekat Anda (seperti earphone). Internet dipakai agar hasil pengukuran ikut tersimpan di akun BabyGrow Anda.',
+  },
+  {
+    q: 'AI Vision sudah akurat?',
+    a: 'AI Vision memberi estimasi tinggi dari kamera sebagai bantuan awal. Untuk keputusan klinis, gunakan pengukuran manual atau alat standar bersama petugas kesehatan.',
+  },
+  {
+    q: 'Siapa yang punya akun petugas?',
+    a: 'Akun petugas/perawat disiapkan oleh fasilitas kesehatan Anda. Orang tua memakai daftar publik; petugas memakai akun yang diberikan institusi.',
   },
 ];
 
 export default function GuideScreen({ navigation }: any) {
+  const [openId, setOpenId] = useState<string | null>('start');
+
+  const toggle = (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenId((prev) => (prev === id ? null : id));
+  };
+
+  const goBack = () => {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Login');
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Panduan</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <ScreenHeader title="Panduan BabyGrow" onBack={goBack} />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Status Banner */}
-        <View style={styles.statusBanner}>
-          <Text style={styles.statusIcon}>📝</Text>
-          <View style={styles.statusTextContainer}>
-            <Text style={styles.statusTitle}>Halaman Panduan Sedang Diperbarui</Text>
-            <Text style={styles.statusDesc}>
-              Kami sedang menyempurnakan dokumentasi untuk memberikan pengalaman terbaik
-            </Text>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroCard}>
+          <View style={styles.heroBadge}>
+            <Text style={styles.heroBadgeText}>Wajib Dibaca</Text>
           </View>
-        </View>
-
-        {/* AI Solution */}
-        <View style={styles.aiSolutionCard}>
-          <Text style={styles.aiTitle}>🤖 Panduan Berjalan dengan AI</Text>
-          <Text style={styles.aiDesc}>
-            Dapatkan panduan real-time dan jawaban instant untuk semua pertanyaan Anda dengan AI Assistant!
+          <Text style={styles.heroTitle}>Cara memakai BabyGrow</Text>
+          <Text style={styles.heroBody}>
+            Panduan sederhana untuk orang tua dan petugas — tanpa istilah teknis
+            yang membingungkan.
           </Text>
-          <TouchableOpacity 
-            style={styles.aiButton}
-            onPress={() => navigation.navigate('AIAssistant')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.aiButtonText}>Buka AI Assistant →</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Quick Guide */}
-        <View style={styles.quickGuideCard}>
-          <Text style={styles.sectionTitle}>📚 Panduan Singkat</Text>
-          
-          {GUIDE_SECTIONS.map((section, index) => (
-            <View key={index} style={styles.guideItem}>
-              <View style={styles.guideIcon}>
-                <Text style={styles.guideIconText}>{section.icon}</Text>
-              </View>
-              <View style={styles.guideContent}>
-                <Text style={styles.guideTitle}>{section.title}</Text>
-                <Text style={styles.guideText}>{section.content}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Getting Started */}
-        <View style={styles.stepCard}>
-          <Text style={styles.sectionTitle}>🚀 Memulai BabyGrow</Text>
-          
-          <View style={styles.step}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>1</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Tambah Profil Anak</Text>
-              <Text style={styles.stepText}>
-                Klik menu "Anak" → "Tambah Anak Baru" → Isi data lengkap (nama, tanggal lahir, jenis kelamin)
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.step}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>2</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Input Data Pengukuran</Text>
-              <Text style={styles.stepText}>
-                Pilih anak → Klik "Edit" atau "Ukur Sekarang" → Masukkan Berat Badan dan Tinggi Badan
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.step}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>3</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Lihat Analisis AI</Text>
-              <Text style={styles.stepText}>
-                Buka menu "AI Analisis" → Tanyakan "Analisis pertumbuhan anak saya" → Dapatkan hasil lengkap
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.step}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>4</Text>
-            </View>
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Monitor Grafik Pertumbuhan</Text>
-              <Text style={styles.stepText}>
-                Klik menu "Grafik" untuk melihat visualisasi pertumbuhan dibandingkan standar WHO
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* FAQ */}
-        <View style={styles.faqCard}>
-          <Text style={styles.sectionTitle}>❓ Pertanyaan Umum</Text>
-          
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Bagaimana cara menambah anak?</Text>
-            <Text style={styles.faqAnswer}>
-              Menu Anak → Tombol "+" → Isi formulir → Simpan
-            </Text>
-          </View>
-
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Data saya aman?</Text>
-            <Text style={styles.faqAnswer}>
-              Ya! Data dienkripsi end-to-end dan tersimpan aman di server bersertifikat ISO 27001.
-            </Text>
-          </View>
-
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Apakah AI bisa menggantikan dokter?</Text>
-            <Text style={styles.faqAnswer}>
-              Tidak. AI adalah alat bantu monitoring. Untuk diagnosis dan pengobatan, tetap konsultasi dengan dokter.
-            </Text>
-          </View>
-
-          <View style={styles.faqItem}>
-            <Text style={styles.faqQuestion}>Bagaimana cara menggunakan IoT device?</Text>
-            <Text style={styles.faqAnswer}>
-              Fitur IoT sedang dikembangkan. Saat ini gunakan input manual terlebih dahulu.
-            </Text>
-          </View>
-        </View>
-
-        {/* Contact Support */}
-        <View style={styles.supportCard}>
-          <Text style={styles.supportTitle}>💬 Butuh Bantuan Lebih?</Text>
-          <Text style={styles.supportText}>
-            Tim support kami siap membantu Anda 24/7
-          </Text>
-          <View style={styles.contactButtons}>
-            <TouchableOpacity style={styles.contactButton}>
-              <Text style={styles.contactButtonText}>📧 Email</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.contactButton}
-              onPress={() => navigation.navigate('AIAssistant')}
-              activeOpacity={0.7}
+        {GUIDES.map((g) => {
+          const open = openId === g.id;
+          return (
+            <TouchableOpacity
+              key={g.id}
+              style={styles.block}
+              activeOpacity={0.85}
+              onPress={() => toggle(g.id)}
             >
-              <Text style={styles.contactButtonText}>🤖 AI Chat</Text>
+              <View style={styles.blockHead}>
+                <View style={styles.blockIcon}>
+                  <MaterialCommunityIcons
+                    name={g.icon}
+                    size={20}
+                    color={colors.primary.main}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.blockTitle}>{g.title}</Text>
+                  <Text style={styles.blockSummary}>{g.summary}</Text>
+                </View>
+                <MaterialCommunityIcons
+                  name={open ? 'chevron-up' : 'chevron-down'}
+                  size={22}
+                  color={colors.primary.main}
+                />
+              </View>
+              {open
+                ? g.steps.map((s, i) => (
+                    <View key={i} style={styles.stepRow}>
+                      <Text style={styles.stepNum}>{i + 1}</Text>
+                      <Text style={styles.stepText}>{s}</Text>
+                    </View>
+                  ))
+                : null}
             </TouchableOpacity>
-          </View>
-        </View>
+          );
+        })}
 
-        <View style={{ height: 30 }} />
+        <Text style={styles.faqTitle}>Pertanyaan Umum</Text>
+        {FAQ.map((f) => (
+          <View key={f.q} style={styles.faqCard}>
+            <Text style={styles.faqQ}>{f.q}</Text>
+            <Text style={styles.faqA}>{f.a}</Text>
+          </View>
+        ))}
+
+        <Button title="Mengerti" onPress={goBack} size="large" fullWidth />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.default,
+  container: { flex: 1, backgroundColor: colors.background.default },
+  content: {
+    paddingHorizontal: spacing.containerPadding,
+    paddingBottom: 100,
+    gap: spacing.md,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+  heroCard: {
+    backgroundColor: colors.primary.fixed,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.diffusion,
+  },
+  heroBadge: {
+    alignSelf: 'flex-start',
     backgroundColor: colors.primary.main,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    marginBottom: spacing.sm,
   },
-  backButton: {
+  heroBadgeText: {
+    ...typography.styles.labelCaps,
+    color: colors.text.inverse,
+  },
+  heroTitle: {
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
+    marginBottom: spacing.xs,
+  },
+  heroBody: {
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
+  },
+  block: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    ...shadows.diffusion,
+  },
+  blockHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  blockIcon: {
     width: 40,
     height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: 24,
-    color: colors.neutral.white,
-  },
-  headerTitle: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.white,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-  },
-  statusBanner: {
-    flexDirection: 'row',
-    backgroundColor: '#FFF3CD',
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.status.warning,
-  },
-  statusIcon: {
-    fontSize: 32,
-    marginRight: spacing.sm,
-  },
-  statusTextContainer: {
-    flex: 1,
-  },
-  statusTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.xs,
-  },
-  statusDesc: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    lineHeight: 20,
-  },
-  aiSolutionCard: {
-    backgroundColor: '#E3F2FD',
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-    alignItems: 'center',
-  },
-  aiTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.sm,
-  },
-  aiDesc: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray700,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-    lineHeight: 20,
-  },
-  aiButton: {
-    backgroundColor: colors.primary.main,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
-  },
-  aiButtonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.white,
-  },
-  quickGuideCard: {
-    backgroundColor: colors.background.paper,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.md,
-  },
-  guideItem: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral.gray200,
-  },
-  guideIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.neutral.gray100,
+    backgroundColor: colors.primary.fixed,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.sm,
   },
-  guideIconText: {
-    fontSize: 24,
+  blockTitle: {
+    ...typography.styles.buttonText,
+    color: colors.text.onSurface,
   },
-  guideContent: {
-    flex: 1,
-  },
-  guideTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.xs,
-  },
-  guideText: {
+  blockSummary: {
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    lineHeight: 18,
+    color: colors.text.secondary,
   },
-  stepCard: {
-    backgroundColor: colors.background.paper,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-  },
-  step: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
-  },
-  stepNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary.main,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-  },
-  stepNumberText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.white,
-  },
-  stepContent: {
-    flex: 1,
-  },
-  stepTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.xs,
-  },
-  stepText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    lineHeight: 20,
-  },
-  faqCard: {
-    backgroundColor: colors.background.paper,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-  },
-  faqItem: {
-    marginBottom: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral.gray200,
-  },
-  faqQuestion: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.xs,
-  },
-  faqAnswer: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    lineHeight: 20,
-  },
-  supportCard: {
-    backgroundColor: '#FFF0F5',
-    padding: spacing.lg,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-    alignItems: 'center',
-  },
-  supportTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.sm,
-  },
-  supportText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    marginBottom: spacing.md,
-  },
-  contactButtons: {
+  stepRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+    marginTop: spacing.md,
+    alignItems: 'flex-start',
   },
-  contactButton: {
-    backgroundColor: colors.background.paper,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 2,
-    borderColor: colors.primary.main,
+  stepNum: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+    textAlign: 'center',
+    lineHeight: 24,
+    backgroundColor: colors.primary.main,
+    color: colors.text.inverse,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 12,
   },
-  contactButtonText: {
+  stepText: {
+    flex: 1,
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.secondary,
+  },
+  faqTitle: {
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
+    marginTop: spacing.sm,
+  },
+  faqCard: {
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+  },
+  faqQ: {
+    ...typography.styles.buttonText,
     color: colors.primary.main,
+    marginBottom: 4,
+  },
+  faqA: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
   },
 });

@@ -1,15 +1,16 @@
 {
   "expo": {
     "name": "BabyGrow",
-    "slug": "babygrow-mobile",
+    "slug": "haikalkalief",
     "version": "3.0.0",
     "orientation": "portrait",
+    "scheme": "babygrow",
     "userInterfaceStyle": "automatic",
-    "icon": "./assets/images/logo-babygrow.png",
+    "icon": "./assets/images/icon.png",
     "splash": {
       "image": "./assets/images/logo-babygrow.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFC1CC"
+      "backgroundColor": "#b60059"
     },
     "ios": {
       "supportsTablet": true,
@@ -20,10 +21,10 @@
       }
     },
     "android": {
-      "icon": "./assets/images/logo-babygrow.png",
+      "icon": "./assets/images/icon.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo-babygrow.png",
-        "backgroundColor": "#FFC1CC"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffd9e1"
       },
       "package": "com.babygrow.app",
       "permissions": [
@@ -43,7 +44,7 @@
     },
     "web": {
       "bundler": "metro",
-      "favicon": "./assets/images/logo-babygrow.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       [
@@ -55,12 +56,14 @@
         }
       ],
       "expo-dev-client",
-      "react-native-ble-plx"
+      "react-native-ble-plx",
+      "expo-font"
     ],
     "extra": {
       "eas": {
-        "projectId": "2d8faa75-9653-4d8a-822a-a2f4efadc235"
+        "projectId": "903baf8d-e441-4c06-bd45-76bb41ef207d"
       }
-    }
+    },
+    "owner": "haikalkaliefs-team"
   }
 }

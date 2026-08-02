@@ -6,6 +6,22 @@
 
 import { Child, Measurement, ZScore } from '../types/models';
 import GeminiAIService from './GeminiAIService';
+import {
+  FALLBACK_DATA_MISSING,
+  FALLBACK_IOT_HELP,
+  FALLBACK_NAVIGATION,
+  FALLBACK_NUTRITION,
+  FALLBACK_PRIVACY,
+  FALLBACK_ZAKI_EXAMPLE_REMOVED,
+  fallbackAdmin,
+  fallbackGreeting,
+  fallbackImmunization,
+  fallbackIoTEmergency,
+  fallbackLoginHelp,
+  fallbackProfileSettings,
+  fallbackStandard,
+  type FallbackLang,
+} from '../constants/fallbackPrompts';
 
 export interface AIMessage {
   id: string;
@@ -733,72 +749,15 @@ export class AIAssistantService {
     return 'general';
   }
 
-  private getGreetingResponse(): string {
-    const responses = {
-      id: '👋 Selamat datang di BabyGrow AI!\n\n' +
-          '🧠 Saya adalah **Intelligence Health Agent** - Solusi Pintar Cegah Stunting\n\n' +
-          '**Saya dapat membantu Anda**:\n' +
-          '✅ Analisis pertumbuhan anak berdasarkan data WHO\n' +
-          '✅ Rekomendasi nutrisi & MPASI untuk cegah stunting\n' +
-          '✅ Panduan penggunaan fitur IoT (timbangan digital)\n' +
-          '✅ Jadwal imunisasi dan stimulasi motorik\n' +
-          '✅ Tanya jawab kesehatan anak 24/7\n\n' +
-          '💡 Tanyakan apapun tentang tumbuh kembang anak Anda!\n' +
-          '🌍 Saya mendukung 5 bahasa: Indonesia, English, 中文, العربية, 日本語',
-      en: '👋 Welcome to BabyGrow AI!\n\n' +
-          '🧠 I am an **Intelligence Health Agent** - Smart Solution to Prevent Stunting\n\n' +
-          '**I can assist you with**:\n' +
-          '✅ Child growth analysis based on WHO standards\n' +
-          '✅ Nutrition & complementary feeding recommendations\n' +
-          '✅ IoT device setup guide (smart scales)\n' +
-          '✅ Immunization schedule & motor stimulation\n' +
-          '✅ 24/7 child health Q&A\n\n' +
-          '💡 Ask me anything about your child\'s development!\n' +
-          '🌍 I support 5 languages: Indonesia, English, 中文, العربية, 日本語',
-      zh: '👋 欢迎来到BabyGrow AI！\n\n' +
-          '🧠 我是**智能健康代理** - 预防发育迟缓的智能解决方案\n\n' +
-          '**我可以帮助您**：\n' +
-          '✅ 基于WHO标准的儿童成长分析\n' +
-          '✅ 营养和辅食建议\n' +
-          '✅ 物联网设备设置指南（智能秤）\n' +
-          '✅ 免疫接种时间表和运动刺激\n' +
-          '✅ 24/7儿童健康问答\n\n' +
-          '💡 向我询问有关孩子发育的任何问题！\n' +
-          '🌍 我支持5种语言：Indonesia, English, 中文, العربية, 日本語',
-      ar: '👋 مرحباً بك في BabyGrow AI!\n\n' +
-          '🧠 أنا **وكيل الصحة الذكي** - حل ذكي لمنع التقزم\n\n' +
-          '**يمكنني مساعدتك في**:\n' +
-          '✅ تحليل نمو الطفل بناءً على معايير منظمة الصحة العالمية\n' +
-          '✅ توصيات التغذية والأطعمة التكميلية\n' +
-          '✅ دليل إعداد جهاز إنترنت الأشياء (الميزان الذكي)\n' +
-          '✅ جدول التطعيمات والتحفيز الحركي\n' +
-          '✅ أسئلة وأجوبة صحة الطفل على مدار الساعة\n\n' +
-          '💡 اسألني أي شيء عن تطور طفلك!\n' +
-          '🌍 أدعم 5 لغات: Indonesia, English, 中文, العربية, 日本語',
-      ja: '👋 BabyGrow AIへようこそ！\n\n' +
-          '🧠 私は**インテリジェント・ヘルス・エージェント** - 発育遅延を防ぐスマートソリューションです\n\n' +
-          '**お手伝いできること**：\n' +
-          '✅ WHO基準に基づく子供の成長分析\n' +
-          '✅ 栄養と離乳食の推奨事項\n' +
-          '✅ IoTデバイス設定ガイド（スマート体重計）\n' +
-          '✅ 予防接種スケジュールと運動刺激\n' +
-          '✅ 24時間365日の子供の健康Q&A\n\n' +
-          '💡 お子様の発達について何でも聞いてください！\n' +
-          '🌍 5つの言語をサポート：Indonesia, English, 中文, العربية, 日本語',
-      es: '👋 ¡Bienvenido a BabyGrow AI!\n\n' +
-          '🧠 Soy un **Agente de Salud Inteligente** - Solución Inteligente para Prevenir el Retraso del Crecimiento\n\n' +
-          '**Puedo ayudarte con**:\n' +
-          '✅ Análisis del crecimiento infantil basado en estándares OMS\n' +
-          '✅ Recomendaciones de nutrición y alimentación complementaria\n' +
-          '✅ Guía de configuración de dispositivos IoT (básculas inteligentes)\n' +
-          '✅ Calendario de inmunización y estimulación motora\n' +
-          '✅ Preguntas y respuestas de salud infantil 24/7\n\n' +
-          '💡 ¡Pregúntame cualquier cosa sobre el desarrollo de tu hijo!\n' +
-          '🌍 Apoyo 5 idiomas: Indonesia, English, 中文, العربية, 日本語',
-    };
-
-    return responses[this.currentLanguage] || responses.id;
+  private asFallbackLang(lang: Language['code']): FallbackLang {
+    const allowed: FallbackLang[] = ['id', 'en', 'zh', 'ar', 'ja', 'es'];
+    return (allowed.includes(lang as FallbackLang) ? lang : 'id') as FallbackLang;
   }
+
+  private getGreetingResponse(): string {
+    return fallbackGreeting(this.asFallbackLang(this.currentLanguage));
+  }
+
 
   private formatAnalysisResponse(analysis: HealthAnalysis, child: Child): string {
     const { category, zScores, interpretation, recommendations } = analysis;
@@ -992,110 +951,29 @@ export class AIAssistantService {
   }
 
   private getDataMissingResponse(): string {
-    return '📋 **Data Tidak Lengkap**\n\n' +
-           'Untuk melakukan analisis pertumbuhan, saya membutuhkan:\n' +
-           '1. Data profil anak (nama, tanggal lahir, jenis kelamin)\n' +
-           '2. Data pengukuran (berat badan, tinggi badan)\n\n' +
-           '📱 **Cara Menambahkan Data**:\n' +
-           '1. Buka menu "Profil Anak" di bawah\n' +
-           '2. Tambah anak baru atau pilih anak yang ada\n' +
-           '3. Klik "Ukur Sekarang" untuk menambah data pengukuran\n\n' +
-           '💡 Anda dapat menggunakan fitur IoT untuk pengukuran otomatis atau input manual.';
+    return FALLBACK_DATA_MISSING;
   }
 
-  private getNutritionAdvice(context?: any): string {
-    return '🥗 **PANDUAN NUTRISI UNTUK PERTUMBUHAN OPTIMAL**\n\n' +
-           '**Prinsip Gizi Seimbang "Isi Piringku"**:\n' +
-           '• 1/3 Karbohidrat (nasi, roti, kentang)\n' +
-           '• 1/3 Protein (ayam, ikan, telur, tempe, tahu)\n' +
-           '• 1/3 Sayur dan buah (bayam, wortel, tomat, pisang)\n\n' +
-           '**Nutrisi Penting untuk Pertumbuhan**:\n' +
-           '1. Protein: 2-3x sehari (telur, ikan, daging)\n' +
-           '2. Zat Besi: Cegah anemia (hati, daging merah, bayam)\n' +
-           '3. Kalsium: Pertumbuhan tulang (susu, keju, ikan teri)\n' +
-           '4. Zinc: Sistem imun (daging, kacang-kacangan)\n' +
-           '5. Vitamin A: Penglihatan (wortel, bayam, mangga)\n\n' +
-           '**Tips Praktis**:\n' +
-           '✅ Berikan 3x makan utama + 2x snack bergizi\n' +
-           '✅ Variasikan menu setiap hari\n' +
-           '✅ Hindari junk food dan minuman manis\n' +
-           '✅ Cukupi kebutuhan air putih\n\n' +
-           '📚 Lihat menu "Resep MBG" untuk inspirasi menu bergizi!';
+
+  private getNutritionAdvice(_context?: any): string {
+    return FALLBACK_NUTRITION;
   }
+
 
   private getIoTHelp(): string {
-    return '📱 **PANDUAN PENGGUNAAN IoT DEVICE**\n\n' +
-           '**Langkah-Langkah Pengukuran**:\n\n' +
-           '1️⃣ Pairing Device\n' +
-           '   • Buka menu "IoT Device"\n' +
-           '   • Klik "Tambah Perangkat Baru"\n' +
-           '   • Nyalakan timbangan/alat ukur IoT\n' +
-           '   • Scan atau hubungkan via Bluetooth\n\n' +
-           '2️⃣ Kalibrasi (Pertama Kali)\n' +
-           '   • Pastikan alat di permukaan datar\n' +
-           '   • Ikuti instruksi kalibrasi di layar\n\n' +
-           '3️⃣ Pengukuran\n' +
-           '   • Pilih anak yang akan diukur\n' +
-           '   • Letakkan anak di alat ukur\n' +
-           '   • Tunggu hingga data tersimpan otomatis\n\n' +
-           '4️⃣ Sinkronisasi\n' +
-           '   • Data akan tersimpan otomatis di cloud\n' +
-           '   • Pastikan koneksi internet aktif\n\n' +
-           '💡 **Troubleshooting**:\n' +
-           '• Perangkat tidak terdeteksi: Cek Bluetooth/WiFi\n' +
-           '• Data tidak akurat: Lakukan kalibrasi ulang\n' +
-           '• Baterai lemah: Charge minimal 50%';
+    return FALLBACK_IOT_HELP;
   }
+
 
   private getNavigationHelp(): string {
-    return '🧭 **PANDUAN NAVIGASI APLIKASI BABYGROW**\n\n' +
-           '**Menu Utama** (Bottom Navigation):\n\n' +
-           '🏠 **Beranda**: Dashboard dan ringkasan\n' +
-           '   • Lihat status pertumbuhan anak\n' +
-           '   • Akses fitur cepat\n\n' +
-           '👶 **Profil Anak**: Manajemen data anak\n' +
-           '   • Tambah/edit profil anak\n' +
-           '   • Lihat riwayat pengukuran\n' +
-           '   • Input data manual\n\n' +
-           '📊 **Grafik**: Visualisasi pertumbuhan\n' +
-           '   • Grafik WHO (BB/U, TB/U, BB/TB)\n' +
-           '   • Tren pertumbuhan\n' +
-           '   • Perbandingan dengan standar\n\n' +
-           '👤 **Profil**: Pengaturan akun\n' +
-           '   • Edit profil orang tua\n' +
-           '   • Pengaturan privasi\n' +
-           '   • Bahasa interface\n\n' +
-           '**Fitur Tambahan**:\n' +
-           '🤖 AI Analisis: Chat dengan asisten AI (Anda di sini!)\n' +
-           '📱 IoT Device: Integrasi alat ukur digital\n' +
-           '🥗 Resep MBG: Rekomendasi menu bergizi\n\n' +
-           '❓ Butuh bantuan lebih lanjut? Tanyakan saja!';
+    return FALLBACK_NAVIGATION;
   }
 
+
   private getPrivacyResponse(): string {
-    return '🔒 **KEAMANAN & PRIVASI DATA ANAK ANDA**\n\n' +
-           '**Komitmen Kami**:\n' +
-           '✅ Data anak Anda dienkripsi end-to-end\n' +
-           '✅ Disimpan di server aman dengan standar ISO 27001\n' +
-           '✅ Tidak dibagikan ke pihak ketiga tanpa izin\n' +
-           '✅ Compliance dengan UU Perlindungan Data Pribadi\n\n' +
-           '**Apa yang Kami Simpan**:\n' +
-           '• Profil anak (nama, tanggal lahir, jenis kelamin)\n' +
-           '• Data pengukuran (BB, TB, lingkar kepala)\n' +
-           '• Riwayat analisis kesehatan\n' +
-           '• Preferensi aplikasi\n\n' +
-           '**Hak Anda**:\n' +
-           '• Akses data kapan saja\n' +
-           '• Export data dalam format PDF/CSV\n' +
-           '• Hapus data permanen\n' +
-           '• Atur siapa yang dapat melihat data\n\n' +
-           '**Best Practices**:\n' +
-           '🔐 Gunakan password kuat\n' +
-           '📱 Aktifkan 2-Factor Authentication\n' +
-           '🚫 Jangan share akun dengan orang lain\n' +
-           '🔄 Logout saat selesai menggunakan\n\n' +
-           '📞 Pertanyaan privasi? Hubungi: privacy@babygrow.app';
+    return FALLBACK_PRIVACY;
   }
+
 
   private getGeneralResponse(message: string, context?: any): string {
     // Deteksi intent khusus berdasarkan role
@@ -1137,251 +1015,57 @@ export class AIAssistantService {
    * PROTOKOL DARURAT - Login Status
    */
   private getLoginStatusResponse(lang: Language['code']): string {
-    const responses = {
-      id: 'Halo Bun! 😊 Nanya soal login ya?\n\n' +
-          'Jadi gini nih... sistem login kita lagi **dipercantik dan diperkuat** biar lebih aman & gampang dipake! 🔐\n\n' +
-          '**Yang lagi dikerjain**:\n' +
-          '✨ Multi-role authentication (User, Admin, Super User) - biar lebih terorganisir\n' +
-          '🔒 Enkripsi data tingkat enterprise - keamanan maksimal!\n' +
-          '🚫 Data profil anak super aman & gak bisa diakses sembarangan\n' +
-          '⚡ Single Sign-On (SSO) - login sekali, akses semua!\n\n' +
-          '**Tapi tenang Bun!** 💡\n' +
-          'Bunda tetap bisa pakai **semua fitur** aplikasi kok! Data tersimpan aman di lokal dulu, nanti otomatis sync kalau sistem login udah aktif.\n\n' +
-          '📅 Paling lama 2-3 hari udah ready\n' +
-          '🔒 Data tetap aman & terenkripsi, jangan khawatir ya!',
-      en: 'Hi Mom! 😊 Asking about login?\n\n' +
-          'So here\'s the thing... our login system is being **beautified and strengthened** to be safer & easier to use! 🔐\n\n' +
-          '**What we\'re working on**:\n' +
-          '✨ Multi-role authentication (User, Admin, Super User) - better organization\n' +
-          '🔒 Enterprise-level encryption - maximum security!\n' +
-          '🚫 Child profile data super safe & not accessible by just anyone\n' +
-          '⚡ Single Sign-On (SSO) - login once, access everything!\n\n' +
-          '**But don\'t worry!** 💡\n' +
-          'You can still use **all features** of the app! Data is safely stored locally first, then automatically syncs once login system is active.\n\n' +
-          '📅 Should be ready in 2-3 days max\n' +
-          '🔒 Data remains safe & encrypted, no worries!',
-    };
-    return responses[lang] || responses.id;
+    return fallbackLoginHelp(this.asFallbackLang(lang));
   }
+
 
   /**
    * PROTOKOL DARURAT - IoT Emergency Manual Input
    */
   private getIoTEmergencyResponse(lang: Language['code']): string {
-    const responses = {
-      id: 'Waduh, sensor otomatisnya lagi istirahat ya Bun? 😅 Gak papa, aku punya solusinya!\n\n' +
-          '**Pakai INPUT MANUAL aja, gampang kok!** 📱\n\n' +
-          'Ikutin langkah ini ya:\n' +
-          '1️⃣ Buka menu **"Profil Anak"** 👶 (ada icon bayi)\n' +
-          '2️⃣ Pilih anak yang mau diukur\n' +
-          '3️⃣ Klik tombol **"Edit"** atau **"Tambah Pengukuran"**\n' +
-          '4️⃣ Isi datanya:\n' +
-          '   • **Berat Badan** (BB) - contoh: 10.5 kg\n' +
-          '   • **Tinggi Badan** (TB) - contoh: 78 cm\n' +
-          '   • **Tanggal** - kapan diukur\n' +
-          '5️⃣ Klik **"Simpan"** - done! ✨\n\n' +
-          '**Tenang, aku (BabyGrow AI) yang akan kerja!** 🤖\n' +
-          '✅ Hitung **Z-Score WHO** otomatis\n' +
-          '✅ Cek risiko stunting\n' +
-          '✅ Kasih rekomendasi **menu MPASI** yang cocok\n' +
-          '✅ Bikin **grafik pertumbuhan** yang kece\n\n' +
-          '💡 **Fun fact**: Hasil analisaku sama akuratnya kayak pakai sensor IoT lho! Jadi gak ada bedanya 😉\n\n' +
-          '📌 Setelah input, langsung aja tanya:\n' +
-          '**"Analisis pertumbuhan anak aku dong!"**',
-      en: 'Oops, the automatic sensor is taking a break? 😅 No worries, I have a solution!\n\n' +
-          '**Just use MANUAL INPUT, it\'s easy!** 📱\n\n' +
-          'Follow these steps:\n' +
-          '1️⃣ Open **"Child Profile"** menu 👶 (baby icon)\n' +
-          '2️⃣ Select the child to measure\n' +
-          '3️⃣ Click **"Edit"** or **"Add Measurement"** button\n' +
-          '4️⃣ Fill in the data:\n' +
-          '   • **Weight** - example: 10.5 kg\n' +
-          '   • **Height** - example: 78 cm\n' +
-          '   • **Date** - when measured\n' +
-          '5️⃣ Click **"Save"** - done! ✨\n\n' +
-          '**Don\'t worry, I (BabyGrow AI) will do the work!** 🤖\n' +
-          '✅ Calculate **WHO Z-Score** automatically\n' +
-          '✅ Check stunting risk\n' +
-          '✅ Give **complementary food menu** recommendations\n' +
-          '✅ Create awesome **growth charts**\n\n' +
-          '💡 **Fun fact**: My analysis is as accurate as using IoT sensors! So no difference 😉\n\n' +
-          '📌 After input, just ask:\n' +
-          '**"Analyze my child\'s growth!"**',
-    };
-    return responses[lang] || responses.id;
+    return fallbackIoTEmergency(this.asFallbackLang(lang));
   }
+
 
   /**
    * Jadwal Imunisasi (karena tombol mati)
    */
   private getImmunizationSchedule(lang: Language['code']): string {
-    const responses = {
-      id: '💉 **JADWAL IMUNISASI LENGKAP**\n\n' +
-          '**0-1 Bulan**:\n' +
-          '• Hepatitis B (HB-0)\n' +
-          '• BCG\n' +
-          '• Polio 1\n\n' +
-          '**2 Bulan**:\n' +
-          '• DPT-HB-Hib 1\n' +
-          '• Polio 2\n\n' +
-          '**3 Bulan**:\n' +
-          '• DPT-HB-Hib 2\n' +
-          '• Polio 3\n\n' +
-          '**4 Bulan**:\n' +
-          '• DPT-HB-Hib 3\n' +
-          '• Polio 4\n' +
-          '• IPV (Polio suntik)\n\n' +
-          '**9 Bulan**:\n' +
-          '• Campak/MR\n\n' +
-          '**18 Bulan**:\n' +
-          '• DPT-HB-Hib booster\n' +
-          '• Campak/MR booster\n\n' +
-          '💡 **Catatan Penting**:\n' +
-          '✅ Jangan tunda imunisasi\n' +
-          '✅ Bawa buku KIA (Kesehatan Ibu Anak)\n' +
-          '✅ Anak sehat saat diimunisasi\n\n' +
-          '📌 Konsultasi dokter untuk vaksin tambahan (PCV, Rotavirus, dll)',
-      en: '💉 **COMPLETE IMMUNIZATION SCHEDULE**\n\n' +
-          '**0-1 Month**:\n' +
-          '• Hepatitis B (HB-0)\n' +
-          '• BCG\n' +
-          '• Polio 1\n\n' +
-          '**2 Months**:\n' +
-          '• DPT-HB-Hib 1\n' +
-          '• Polio 2\n\n' +
-          '**3 Months**:\n' +
-          '• DPT-HB-Hib 2\n' +
-          '• Polio 3\n\n' +
-          '**4 Months**:\n' +
-          '• DPT-HB-Hib 3\n' +
-          '• Polio 4\n' +
-          '• IPV (Injectable Polio)\n\n' +
-          '**9 Months**:\n' +
-          '• Measles/MR\n\n' +
-          '**18 Months**:\n' +
-          '• DPT-HB-Hib booster\n' +
-          '• Measles/MR booster\n\n' +
-          '💡 **Important Notes**:\n' +
-          '✅ Don\'t delay immunizations\n' +
-          '✅ Bring health record book\n' +
-          '✅ Child must be healthy\n\n' +
-          '📌 Consult doctor for additional vaccines (PCV, Rotavirus, etc)',
-    };
-    return responses[lang] || responses.id;
+    return fallbackImmunization(this.asFallbackLang(lang));
   }
+
 
   /**
    * Status Profil & Dark Mode
    */
   private getProfileSettingsStatus(lang: Language['code']): string {
-    const responses = {
-      id: 'Wah, nanya soal Profil ya Bun? 😊\n\n' +
-          'Jadi gini... fitur ini sedang kami **percantik dan perkuat keamanannya** 🔐 biar data si kecil tetap aman banget!\n\n' +
-          '**Yang lagi dikerjain**:\n' +
-          '✨ Sinkronisasi UI dengan backend biar mulus\n' +
-          '🔒 Enkripsi data profil (double security!)\n' +
-          '🌙 Dark Mode yang bisa disimpan preferensinya\n' +
-          '🌍 Pengaturan multi-bahasa (5 bahasa lho!)\n' +
-          '📄 Export data jadi PDF buat dokumentasi\n\n' +
-          '**Sambil nunggu, Bunda bisa**:\n' +
-          '💬 Ganti bahasa langsung di chat ini kok! Tinggal bilang:\n' +
-          '• "Ganti ke bahasa Inggris" → English\n' +
-          '• "Switch to English" → English\n' +
-          '• "切换到中文" → Mandarin\n' +
-          '• "Cambiar a español" → Spanish\n\n' +
-          '📅 Paling lama 1-2 hari udah beres kok! Sabar ya Bun~ 💕',
-      en: 'Oh, asking about Profile features? 😊\n\n' +
-          'So here\'s the thing... we\'re currently **beautifying and strengthening its security** 🔐 so your little one\'s data stays super safe!\n\n' +
-          '**What we\'re working on**:\n' +
-          '✨ UI synchronization with backend for smooth experience\n' +
-          '🔒 Profile data encryption (double security!)\n' +
-          '🌙 Dark Mode with saved preferences\n' +
-          '🌍 Multi-language settings (5 languages!)\n' +
-          '📄 Export data to PDF for documentation\n\n' +
-          '**While waiting, you can**:\n' +
-          '💬 Change language right here in chat! Just say:\n' +
-          '• "Ganti ke bahasa Inggris" → English\n' +
-          '• "Switch to English" → English\n' +
-          '• "切换到中文" → Mandarin\n' +
-          '• "Cambiar a español" → Spanish\n\n' +
-          '📅 Should be ready in 1-2 days max! Thanks for your patience~ 💕',
-    };
-    return responses[lang] || responses.id;
+    return fallbackProfileSettings(this.asFallbackLang(lang));
   }
+
 
   /**
    * Super User Response
    */
-  private getSuperUserResponse(message: string, lang: Language['code']): string {
-    return 'Halo Admin! 👑 Wah, ketemu sama Super User nih~ Siap melayani akses penuh sistem! 🔓\n\n' +
-           '**Aku bisa kasih data apapun yang Admin butuhin**, misalnya:\n\n' +
-           '**Query Database** 💾\n' +
-           '• "Berapa total anak yang terdaftar?"\n' +
-           '• "Statistik stunting nasional gimana?"\n' +
-           '• "Export semua data pengguna dong"\n' +
-           '• "Tampilkan dashboard analytics"\n\n' +
-           '**System Management** 🔧\n' +
-           '• Monitor semua IoT devices yang connected\n' +
-           '• Manage user roles (siapa jadi Admin, siapa User)\n' +
-           '• Lihat system logs buat troubleshooting\n' +
-           '• Setting konfigurasi advanced\n\n' +
-           '📊 Langsung aja tanya data spesifik yang Admin perluin, aku siap cariin!';
+  private getSuperUserResponse(_message: string, lang: Language['code']): string {
+    return fallbackAdmin(this.asFallbackLang(lang));
   }
+
 
   /**
    * Admin Response
    */
-  private getAdminResponse(message: string, lang: Language['code']): string {
-    return 'Halo Bidan! 👩‍⚕️ Senang bertemu dengan tenaga kesehatan hebat seperti Anda! 😊\n\n' +
-           '**Soal fitur "Tambah Anak"** nih... ⚠️ Lagi diperbaiki ya, mohon maaf untuk ketidaknyamanannya~\n\n' +
-           '**Tapi tenang, ada solusinya kok!** 💡\n' +
-           '1. Untuk sementara, Bunda/Ayah bisa input data anak langsung lewat interface mobile mereka\n' +
-           '2. Nanti otomatis tersinkron ke sistem Bidan kok, gak hilang!\n' +
-           '3. Paling lama 24 jam, fitur admin sudah normal lagi ✨\n\n' +
-           '**Aku bisa bantu Bidan untuk**:\n' +
-           '📊 Kelola data pengguna di wilayah Bidan\n' +
-           '🥗 Monitor program Makanan Bergizi Gratis (MBG)\n' +
-           '✅ Verifikasi data dari Posyandu\n' +
-           '📈 Lihat statistik stunting regional\n\n' +
-           '📋 Ada yang perlu Bidan kelola hari ini? Tanya aja, aku siap bantuin!';
+  private getAdminResponse(_message: string, lang: Language['code']): string {
+    return fallbackAdmin(this.asFallbackLang(lang));
   }
+
 
   /**
    * Standard User Response
    */
   private getStandardResponse(lang: Language['code']): string {
-    const responses = {
-      id: 'Halo Bunda! 👋 Wah, senang sekali bisa ngobrol sama Bunda hari ini! 😊\n\n' +
-          'Aku ini BabyGrow AI, tapi panggil aja teman diskusi Bunda buat urusan si kecil ya~ 💕\n\n' +
-          '**Aku bisa bantu Bunda untuk**:\n' +
-          '🍼 Ngecek pertumbuhan anak pakai standar WHO\n' +
-          '🥗 Kasih ide menu MPASI yang enak & bergizi\n' +
-          '💪 Tips biar anak tumbuh kuat & sehat\n' +
-          '💉 Ingetin jadwal vaksin biar gak kelewat\n' +
-          '📊 Jelasin cara pakai alat ukur digital\n\n' +
-          '**Bunda bisa tanya apa aja, misalnya**:\n' +
-          '• "Anak aku BB 10kg TB 75cm, gimana ya?"\n' +
-          '• "Menu MPASI buat bayi 8 bulan dong!"\n' +
-          '• "Vaksin apa aja yang wajib usia 2 bulan?"\n' +
-          '• "Cara input data manual gimana sih?"\n\n' +
-          '💡 **Oh iya Bun**, aku ini AI yang siap bantu 24/7, tapi kalau ada yang serius soal kesehatan anak, tetep konsul ke dokter ya! Aku cuma teman diskusi, bukan pengganti dokter 😉',
-      en: 'Hi Mom! 👋 So happy to chat with you today! 😊\n\n' +
-          'I\'m BabyGrow AI, but just think of me as your discussion buddy for your little one~ 💕\n\n' +
-          '**I can help you with**:\n' +
-          '🍼 Check your child\'s growth using WHO standards\n' +
-          '🥗 Suggest yummy & nutritious complementary food menus\n' +
-          '💪 Tips to help your child grow strong & healthy\n' +
-          '💉 Remind you of vaccine schedules so you don\'t miss them\n' +
-          '📊 Explain how to use digital measuring devices\n\n' +
-          '**Feel free to ask anything, like**:\n' +
-          '• "My child is 10kg and 75cm, how is that?"\n' +
-          '• "Meal ideas for 8-month-old baby please!"\n' +
-          '• "What vaccines are needed at 2 months?"\n' +
-          '• "How do I input data manually?"\n\n' +
-          '💡 **By the way**, I\'m an AI ready to help 24/7, but if there\'s anything serious about your child\'s health, always consult a doctor! I\'m just a discussion friend, not a doctor replacement 😉',
-    };
-    return responses[lang] || responses.id;
+    return fallbackStandard(this.asFallbackLang(lang));
   }
+
 
   getConversationHistory(): AIMessage[] {
     return this.conversationHistory;
@@ -1408,8 +1092,8 @@ export class AIAssistantService {
              '**Contoh cara ngasih tau**:\n' +
              '"Anak aku BB 10 kg, TB 75 cm, lahir 1 Januari 2024"\n' +
              'atau\n' +
-             '"Zaki beratnya 9.5kg tinggi 72cm lahir Mei 2024"\n\n' +
-             'Gampang kan? Yuk kasih tau datanya! 💕';
+             FALLBACK_ZAKI_EXAMPLE_REMOVED +
+             '\n\nGampang kan? Yuk kasih tau datanya! 💕';
     }
 
     const weight = weightMatch ? parseFloat(weightMatch[1]) : null;

@@ -15,7 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '../../theme';
+import {colors, typography, spacing, borderRadius} from '../../theme';
 
 export default function ChildDataScreen({ navigation, route }: any) {
   const { parentData } = route.params;
@@ -368,20 +368,20 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    backgroundColor: '#FFF3E0',
+    backgroundColor: colors.primary.fixed,
     margin: spacing.lg,
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'flex-start',
   },
   infoIcon: {
-    fontSize: 24,
+    fontSize: typography.fontSize.xl,
     marginRight: spacing.sm,
   },
   infoText: {
     flex: 1,
     fontSize: typography.fontSize.sm,
-    color: '#E65100',
+    color: colors.stunting.stunted,
     lineHeight: 20,
   },
   nextButton: {

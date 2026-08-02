@@ -3,7 +3,7 @@
  */
 
 import { colors } from './colors';
-import { typography } from './typography';
+import { typography, fontFamilies } from './typography';
 import { spacing } from './spacing';
 import { borderRadius } from './borderRadius';
 import { shadows } from './shadows';
@@ -18,7 +18,7 @@ export const zIndex = {
   tooltip: 1070,
 } as const;
 
-export { colors, typography, spacing, borderRadius, shadows };
+export { colors, typography, fontFamilies, spacing, borderRadius, shadows };
 
 const theme = {
   colors,
