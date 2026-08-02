@@ -1,5 +1,5 @@
 /**
- * User Dashboard — real data from useChildren + useLatestMeasurement + MQTT sync
+ * User Dashboard — Parent Beranda (Officer Dashboard layout, desainuiux.md)
  */
 
 import React from 'react';
@@ -10,19 +10,24 @@ import {
   ScrollView,
   Pressable,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../store/authStore';
 import {
   SkeletonLoader,
   PairingModal,
-  ScreenHeader,
   SyncStatusIndicator,
 } from '../components/common';
-import { LiveMeasurementCard } from '../components/common/LiveMeasurementCard';
+import {
+  WelcomeHeader,
+  HeroStatusBanner,
+  QuickMenuTile,
+  SectionHeading,
+  RiskPill,
+} from '../components/common/DashboardUI';
 import { HardwareHealthWidget } from '../components/common/HardwareHealthWidget';
 import MBGQuestionnaireModal from '../components/common/MBGQuestionnaireModal';
 import HapticService from '../services/HapticService';
@@ -35,11 +40,8 @@ import {
   useLatestMeasurement,
 } from '../hooks/useMeasurements';
 import { calculateAgeInMonths } from '../utils/zScoreCalculator';
-import { colors, spacing, typography, borderRadius } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows } from '../theme';
 import { useChildStore } from '../store/childStore';
-
-const { width } = Dimensions.get('window');
-const BG_GRADIENT = colors.secondary.gradient.softBg;
 
 function formatMeasuredAt(iso?: string | null): string {
   if (!iso) return '—';
@@ -54,7 +56,6 @@ function formatMeasuredAt(iso?: string | null): string {
   }
 }
 
-/** Map z-score (-3…+3) → bar position 0–100% */
 function zScoreBarPercent(z: number | null | undefined): number {
   if (z == null || Number.isNaN(z)) return 50;
   const clamped = Math.max(-3, Math.min(3, z));
@@ -63,6 +64,12 @@ function zScoreBarPercent(z: number | null | undefined): number {
 
 export default function UserDashboardScreen({ navigation }: any) {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const cardW = Math.max(
+    140,
+    (width - spacing.containerPadding * 2 - spacing.stackGap) / 2
+  );
+
   const {
     data: children = [],
     isPending: childrenLoading,
@@ -73,10 +80,8 @@ export default function UserDashboardScreen({ navigation }: any) {
   const activeChildId = useChildStore((s) => s.activeChildId);
   const activeChild = useChildStore((s) => s.activeChild);
 
-  const {
-    data: latest,
-    isPending: latestLoading,
-  } = useLatestMeasurement(activeChildId);
+  const { data: latest, isPending: latestLoading } =
+    useLatestMeasurement(activeChildId);
 
   const [pairingModalVisible, setPairingModalVisible] = React.useState(false);
   const [mbgModalVisible, setMbgModalVisible] = React.useState(false);
@@ -92,7 +97,6 @@ export default function UserDashboardScreen({ navigation }: any) {
     []
   );
 
-  // Keep Zustand activeChild in sync with children list (race-safe)
   React.useEffect(() => {
     if (children.length === 0) {
       if (activeChildId) setActiveChild(null);
@@ -145,8 +149,8 @@ export default function UserDashboardScreen({ navigation }: any) {
       try {
         await mqttService.connect();
       } catch (error) {
-        console.warn('MQTT broker unreachable — simulated mode', error);
-        mqttService.markSimulatedConnected();
+        console.warn('MQTT broker unreachable', error);
+        if (__DEV__) mqttService.markSimulatedConnected();
       }
     })();
 
@@ -173,336 +177,261 @@ export default function UserDashboardScreen({ navigation }: any) {
 
   const ageMonths = activeChild
     ? calculateAgeInMonths(activeChild.date_of_birth)
-    : 18;
+    : null;
 
-  const handleSelectChild = async () => {
+  const profileLoading = childrenLoading || (!!activeChildId && latestLoading);
+
+  const goChildren = async () => {
     await HapticService.buttonPress();
     navigation.navigate('Children');
   };
 
-  const handleManualMeasure = async () => {
-    await HapticService.buttonPress();
-    navigation.navigate('ManualMeasurement');
-  };
-
-  const handleViewGrowth = async () => {
-    await HapticService.buttonPress();
-    navigation.navigate('Grafik');
-  };
-
-  const handleViewRecipes = async () => {
-    await HapticService.buttonPress();
-    navigation.navigate('RecipeList');
-  };
-
-  const handleAIChat = async () => {
-    await HapticService.buttonPress();
-    navigation.navigate('AIAssistant');
-  };
-
-  const handleMBGQuestionnaire = async () => {
-    await HapticService.buttonPress();
-    setMbgModalVisible(true);
-  };
-
-  const handleRetryConnect = async () => {
-    await HapticService.buttonPress();
-    try {
-      await mqttService.connect();
-    } catch {
-      Alert.alert('Error', 'Gagal menghubungkan ke perangkat IoT');
-    }
-  };
-
-  const profileLoading = childrenLoading || (!!activeChildId && latestLoading);
-
   return (
-    <View style={styles.container}>
-      <LinearGradient colors={BG_GRADIENT} style={styles.gradient}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View entering={FadeInDown.duration(600)}>
-            <ScreenHeader
-              brand
-              title="BabyGrow"
-              subtitle={`Halo, ${user?.name || 'Ibu'}`}
-              rightAction={<SyncStatusIndicator />}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View entering={FadeInDown.duration(500)}>
+          <WelcomeHeader
+            name={user?.name || 'Parent'}
+            right={
+              <View style={styles.notifBtn}>
+                <SyncStatusIndicator compact />
+              </View>
+            }
+          />
+        </Animated.View>
+
+        <HeroStatusBanner
+          badge={
+            mqttConnected
+              ? isPaired
+                ? 'Device: Connected'
+                : 'Alat: Siap'
+              : 'Device: Offline'
+          }
+          body={
+            activeChild
+              ? `Monitoring aktif untuk ${activeChild.name}.`
+              : 'Tambahkan anak untuk mulai pantau pertumbuhan.'
+          }
+        />
+
+        {childrenError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Gagal memuat data anak</Text>
+          </View>
+        ) : null}
+
+        {!childrenLoading && children.length === 0 ? (
+          <Pressable style={styles.emptyChild} onPress={goChildren}>
+            <MaterialCommunityIcons
+              name="baby-carriage"
+              size={32}
+              color={colors.primary.main}
             />
-          </Animated.View>
-
-          <Animated.View entering={FadeInUp.delay(80).duration(500)}>
-            <LiveMeasurementCard
-              childId={activeChildId}
-              bindMqtt
-              isConnected={mqttConnected}
-              onSelectChild={handleSelectChild}
-            />
-          </Animated.View>
-
-          {childrenError ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>Gagal memuat data anak</Text>
-            </View>
-          ) : null}
-
-          {!childrenLoading && children.length === 0 ? (
-            <Pressable style={styles.emptyChild} onPress={handleSelectChild}>
-              <Text style={styles.emptyChildTitle}>Belum ada anak</Text>
-              <Text style={styles.emptyChildHint}>
-                Tambahkan profil anak untuk mulai monitoring pertumbuhan.
-              </Text>
-            </Pressable>
-          ) : profileLoading ? (
-            <View style={{ marginVertical: spacing.sm }}>
-              <SkeletonLoader variant="card" count={1} style={{ padding: 0 }} />
-            </View>
-          ) : activeChild ? (
-            <Animated.View entering={FadeInUp.delay(160).duration(500)}>
-              <BlurView intensity={20} tint="light" style={styles.glassCard}>
-                <View style={styles.cardShadow}>
-                  <LinearGradient
-                    colors={[
-                      'rgba(182, 0, 89, 0.12)',
-                      'rgba(255, 217, 225, 0.35)',
-                    ]}
-                    style={styles.cardGradient}
-                  >
-                    <View style={styles.childHeader}>
-                      <View style={styles.childAvatar}>
-                        <Text style={styles.childAvatarEmoji}>
-                          {activeChild.gender === 'female' ? '👧' : '👦'}
-                        </Text>
-                      </View>
-                      <View style={styles.childInfo}>
-                        <Text style={styles.childName}>{activeChild.name}</Text>
-                        <Text style={styles.childDetails}>
-                          {activeChild.gender === 'female'
-                            ? 'Perempuan'
-                            : 'Laki-laki'}{' '}
-                          · {ageLabelFromDob(activeChild.date_of_birth)}
-                        </Text>
-                        {latest?.measured_at ? (
-                          <Text style={styles.measuredHint}>
-                            Terakhir diukur {formatMeasuredAt(latest.measured_at)}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Pressable
-                        style={styles.moreButton}
-                        onPress={handleSelectChild}
-                        hitSlop={8}
-                      >
-                        <Text style={styles.moreIcon}>⇄</Text>
-                      </Pressable>
-                    </View>
-
-                    <View style={styles.divider} />
-
-                    {!latest ? (
-                      <Text style={styles.noMeasure}>Belum ada pengukuran</Text>
-                    ) : (
-                      <View style={styles.measurementRow}>
-                        <View style={styles.measurementItem}>
-                          <Text style={styles.measurementLabel}>Berat</Text>
-                          <Text style={styles.measurementValue}>
-                            {latest.weight_kg != null
-                              ? `${Number(latest.weight_kg).toFixed(1)} kg`
-                              : '—'}
-                          </Text>
-                        </View>
-                        <View style={styles.measurementItem}>
-                          <Text style={styles.measurementLabel}>Tinggi</Text>
-                          <Text style={styles.measurementValue}>
-                            {Number(latest.height_cm).toFixed(1)} cm
-                          </Text>
-                        </View>
-                        <View style={styles.measurementItem}>
-                          <Text style={styles.measurementLabel}>Z-Score</Text>
-                          <Text
-                            style={[
-                              styles.measurementValue,
-                              {
-                                color:
-                                  stunting?.color ?? colors.text.onSurface,
-                              },
-                            ]}
-                          >
-                            {latest.z_score_hfa != null
-                              ? Number(latest.z_score_hfa).toFixed(2)
-                              : '—'}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {stunting ? (
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          { backgroundColor: `${stunting.color}18` },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.statusDot,
-                            { backgroundColor: stunting.color },
-                          ]}
-                        />
-                        <Text
-                          style={[styles.statusText, { color: stunting.color }]}
-                        >
-                          {stunting.label}
-                        </Text>
-                      </View>
-                    ) : latest ? null : null}
-                  </LinearGradient>
+            <Text style={styles.emptyChildTitle}>Belum ada anak</Text>
+            <Text style={styles.emptyChildHint}>
+              Tambahkan profil anak untuk mulai monitoring.
+            </Text>
+          </Pressable>
+        ) : profileLoading ? (
+          <SkeletonLoader variant="card" count={1} style={{ padding: 0 }} />
+        ) : activeChild ? (
+          <Animated.View entering={FadeInUp.delay(80).duration(450)}>
+            <Pressable style={styles.childCard} onPress={goChildren}>
+              <View style={styles.childHeader}>
+                <View style={styles.avatar}>
+                  <MaterialCommunityIcons
+                    name={
+                      activeChild.gender === 'female'
+                        ? 'face-woman'
+                        : 'face-man'
+                    }
+                    size={28}
+                    color={colors.primary.main}
+                  />
                 </View>
-              </BlurView>
-            </Animated.View>
-          ) : null}
-
-          <Animated.View
-            entering={FadeInUp.delay(280).duration(500)}
-            style={styles.actionsContainer}
-          >
-            <Text style={styles.sectionTitle}>Aksi Cepat</Text>
-            <View style={styles.actionsGrid}>
-              <Pressable
-                style={[styles.actionCard, styles.actionCardPrimary]}
-                onPress={async () => {
-                  await HapticService.light();
-                  setPairingModalVisible(true);
-                }}
-              >
-                <View style={styles.actionIcon}>
-                  <Text style={styles.actionEmoji}>📡</Text>
-                </View>
-                <Text style={styles.actionLabel}>Ukur Otomatis</Text>
-              </Pressable>
-
-              <Pressable style={styles.actionCard} onPress={handleManualMeasure}>
-                <View style={styles.actionIcon}>
-                  <Text style={styles.actionEmoji}>⚖️</Text>
-                </View>
-                <Text style={styles.actionLabel}>Ukur Manual</Text>
-              </Pressable>
-
-              <Pressable style={styles.actionCard} onPress={handleViewGrowth}>
-                <View style={styles.actionIcon}>
-                  <Text style={styles.actionEmoji}>📊</Text>
-                </View>
-                <Text style={styles.actionLabel}>Grafik</Text>
-              </Pressable>
-
-              <Pressable style={styles.actionCard} onPress={handleViewRecipes}>
-                <View style={styles.actionIcon}>
-                  <Text style={styles.actionEmoji}>🥘</Text>
-                </View>
-                <Text style={styles.actionLabel}>Resep MBG</Text>
-              </Pressable>
-
-              <Pressable
-                style={[styles.actionCard, styles.actionCardPrimary]}
-                onPress={handleMBGQuestionnaire}
-              >
-                <View style={styles.actionIcon}>
-                  <Text style={styles.actionEmoji}>🤖</Text>
-                </View>
-                <Text style={styles.actionLabel}>AI Menu</Text>
-              </Pressable>
-
-              <Pressable style={styles.actionCard} onPress={handleAIChat}>
-                <View style={styles.actionIcon}>
-                  <Text style={styles.actionEmoji}>💬</Text>
-                </View>
-                <Text style={styles.actionLabel}>AI Chat</Text>
-              </Pressable>
-            </View>
-          </Animated.View>
-
-          <Animated.View entering={FadeInUp.delay(400).duration(500)}>
-            <BlurView intensity={15} tint="light" style={styles.zScoreWidget}>
-              <Text style={styles.widgetTitle}>Cek Stunting Otomatis</Text>
-              <Text style={styles.widgetSubtitle}>
-                Berdasarkan standar WHO (TB/U):
-              </Text>
-              {!latest || latest.z_score_hfa == null ? (
-                <Text style={styles.zScoreResultMuted}>
-                  Belum ada pengukuran
-                </Text>
-              ) : (
-                <>
-                  <View style={styles.zScoreBar}>
-                    <View
-                      style={[
-                        styles.zScoreIndicator,
-                        {
-                          left: `${zScoreBarPercent(latest.z_score_hfa)}%`,
-                          backgroundColor:
-                            stunting?.color ?? colors.status.warning,
-                        },
-                      ]}
-                    />
-                    <View style={styles.zScoreLabels}>
-                      <Text style={styles.zScoreLabel}>-3</Text>
-                      <Text style={styles.zScoreLabel}>-2</Text>
-                      <Text style={styles.zScoreLabel}>0</Text>
-                      <Text style={styles.zScoreLabel}>+2</Text>
-                    </View>
-                  </View>
-                  <Text
-                    style={[
-                      styles.zScoreResult,
-                      { color: stunting?.color ?? colors.text.onSurface },
-                    ]}
-                  >
-                    {stunting
-                      ? `${stunting.label} (z = ${Number(latest.z_score_hfa).toFixed(2)})`
-                      : `Z-Score ${Number(latest.z_score_hfa).toFixed(2)}`}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.childName}>{activeChild.name}</Text>
+                  <Text style={styles.childMeta}>
+                    {activeChild.gender === 'female'
+                      ? 'Perempuan'
+                      : 'Laki-laki'}{' '}
+                    · {ageLabelFromDob(activeChild.date_of_birth)}
                   </Text>
-                </>
-              )}
-            </BlurView>
+                  {latest?.measured_at ? (
+                    <Text style={styles.childMeta}>
+                      Terakhir {formatMeasuredAt(latest.measured_at)}
+                    </Text>
+                  ) : null}
+                </View>
+                {stunting ? (
+                  <RiskPill label={stunting.label} color={stunting.color} />
+                ) : null}
+              </View>
+
+              <View style={styles.metricsRow}>
+                <View style={[styles.metricCard, { width: cardW }]}>
+                  <Text style={styles.metricLabel}>Berat</Text>
+                  <Text style={styles.metricValue}>
+                    {latest?.weight_kg != null
+                      ? Number(latest.weight_kg).toFixed(1)
+                      : '—'}
+                    <Text style={styles.metricUnit}> kg</Text>
+                  </Text>
+                </View>
+                <View style={[styles.metricCard, { width: cardW }]}>
+                  <Text style={styles.metricLabel}>Tinggi</Text>
+                  <Text style={styles.metricValue}>
+                    {latest?.height_cm != null
+                      ? Number(latest.height_cm).toFixed(1)
+                      : '—'}
+                    <Text style={styles.metricUnit}> cm</Text>
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
           </Animated.View>
-        </ScrollView>
+        ) : null}
 
-        <PairingModal
-          visible={pairingModalVisible}
-          onClose={() => setPairingModalVisible(false)}
-          onSuccess={(deviceInfo) => {
-            setIsPaired(true);
-            setBatteryLevel(deviceInfo.batteryLevel || 0);
-            setSignalStrength(deviceInfo.signalStrength || 0);
-            Alert.alert(
-              'Berhasil!',
-              `Terhubung ke ${deviceInfo.name || deviceInfo.deviceId}`,
-              [{ text: 'OK', onPress: () => HapticService.success() }]
-            );
-          }}
-        />
+        <Animated.View entering={FadeInUp.delay(160).duration(450)}>
+          <SectionHeading title="Quick Menu" />
+          <View style={styles.menuGrid}>
+            <QuickMenuTile
+              icon="access-point"
+              label="Ukur Otomatis"
+              primary
+              onPress={() => setPairingModalVisible(true)}
+            />
+            <QuickMenuTile
+              icon="wifi"
+              label="Ukur Live"
+              onPress={() => navigation.navigate('Measurement')}
+            />
+            <QuickMenuTile
+              icon="scale-bathroom"
+              label="Ukur Manual"
+              onPress={() => navigation.navigate('ManualMeasurement')}
+            />
+            <QuickMenuTile
+              icon="chart-line"
+              label="Grafik"
+              onPress={() => navigation.navigate('Grafik')}
+            />
+            <QuickMenuTile
+              icon="food-apple"
+              label="Resep MBG"
+              onPress={() => navigation.navigate('RecipeList')}
+            />
+            <QuickMenuTile
+              icon="camera-outline"
+              label="AI Vision"
+              onPress={() => navigation.navigate('AIVisionStadiometer')}
+            />
+            <QuickMenuTile
+              icon="robot-outline"
+              label="AI Chat"
+              onPress={() => navigation.navigate('AIAssistant')}
+            />
+            <QuickMenuTile
+              icon="clipboard-list-outline"
+              label="AI Menu"
+              primary
+              onPress={() => setMbgModalVisible(true)}
+            />
+            <QuickMenuTile
+              icon="account-child"
+              label="Ganti Anak"
+              onPress={goChildren}
+            />
+          </View>
+        </Animated.View>
 
-        <HardwareHealthWidget
-          isConnected={mqttConnected}
-          batteryLevel={batteryLevel}
-          signalStrength={signalStrength}
-          onRetryConnect={handleRetryConnect}
-        />
+        <Animated.View entering={FadeInUp.delay(240).duration(450)}>
+          <View style={styles.zCard}>
+            <Text style={styles.zTitle}>Cek Stunting Otomatis</Text>
+            <Text style={styles.zSub}>Berdasarkan standar WHO (TB/U)</Text>
+            {!latest || latest.z_score_hfa == null ? (
+              <Text style={styles.zMuted}>Belum ada pengukuran</Text>
+            ) : (
+              <>
+                <View style={styles.zBar}>
+                  <View
+                    style={[
+                      styles.zIndicator,
+                      {
+                        left: `${zScoreBarPercent(latest.z_score_hfa)}%`,
+                        backgroundColor:
+                          stunting?.color ?? colors.status.warning,
+                      },
+                    ]}
+                  />
+                </View>
+                <View style={styles.zLabels}>
+                  <Text style={styles.zLabel}>-3</Text>
+                  <Text style={styles.zLabel}>-2</Text>
+                  <Text style={styles.zLabel}>0</Text>
+                  <Text style={styles.zLabel}>+2</Text>
+                </View>
+                <Text
+                  style={[
+                    styles.zResult,
+                    { color: stunting?.color ?? colors.text.onSurface },
+                  ]}
+                >
+                  {stunting
+                    ? `${stunting.label} (z = ${Number(latest.z_score_hfa).toFixed(2)})`
+                    : `Z-Score ${Number(latest.z_score_hfa).toFixed(2)}`}
+                </Text>
+              </>
+            )}
+          </View>
+        </Animated.View>
+      </ScrollView>
 
-        <MBGQuestionnaireModal
-          visible={mbgModalVisible}
-          onClose={() => setMbgModalVisible(false)}
-          childAge={ageMonths}
-          childWeight={
-            latest?.weight_kg != null ? Number(latest.weight_kg) : undefined
+      <PairingModal
+        visible={pairingModalVisible}
+        onClose={() => setPairingModalVisible(false)}
+        onSuccess={(deviceInfo) => {
+          setIsPaired(true);
+          setBatteryLevel(deviceInfo.batteryLevel || 0);
+          setSignalStrength(deviceInfo.signalStrength || 0);
+          Alert.alert(
+            'Berhasil!',
+            `Terhubung ke ${deviceInfo.name || deviceInfo.deviceId}`,
+            [{ text: 'OK', onPress: () => HapticService.success() }]
+          );
+        }}
+      />
+
+      <HardwareHealthWidget
+        isConnected={mqttConnected}
+        batteryLevel={batteryLevel}
+        signalStrength={signalStrength}
+        onRetryConnect={async () => {
+          await HapticService.buttonPress();
+          try {
+            await mqttService.connect();
+          } catch {
+            Alert.alert('Error', 'Gagal menghubungkan ke perangkat IoT');
           }
-          childHeight={
-            latest?.height_cm != null ? Number(latest.height_cm) : undefined
-          }
-        />
-      </LinearGradient>
-    </View>
+        }}
+      />
+
+      <MBGQuestionnaireModal
+        visible={mbgModalVisible}
+        onClose={() => setMbgModalVisible(false)}
+        childAge={ageMonths ?? undefined}
+        childWeight={
+          latest?.weight_kg != null ? Number(latest.weight_kg) : undefined
+        }
+        childHeight={
+          latest?.height_cm != null ? Number(latest.height_cm) : undefined
+        }
+      />
+    </SafeAreaView>
   );
 }
 
@@ -511,13 +440,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.default,
   },
-  gradient: {
-    flex: 1,
+  scroll: {
+    paddingHorizontal: spacing.containerPadding,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxl + 72,
   },
-  scrollContent: {
-    padding: spacing.containerPadding,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
+  notifBtn: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.lowest,
+    ...shadows.diffusion,
   },
   errorBox: {
     padding: spacing.md,
@@ -527,237 +459,143 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.status.error,
-    fontWeight: typography.fontWeight.semibold,
+    fontFamily: typography.fontFamily.semiBold,
   },
   emptyChild: {
     backgroundColor: colors.surface.lowest,
     borderRadius: borderRadius.xl,
     padding: spacing.lg,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.section,
+    alignItems: 'center',
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border.default,
     borderStyle: 'dashed',
   },
   emptyChildTitle: {
     ...typography.styles.headlineLgMobile,
-    fontSize: 18,
+    fontSize: typography.fontSize.lg,
     color: colors.primary.main,
-    marginBottom: spacing.xs,
   },
   emptyChildHint: {
-    color: colors.text.secondary,
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
-  glassCard: {
+  childCard: {
+    backgroundColor: colors.surface.lowest,
     borderRadius: borderRadius.xl,
-    overflow: 'hidden',
-    marginBottom: spacing.lg,
-  },
-  cardShadow: {
-    ...{
-      shadowColor: colors.primary.main,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.2,
-      shadowRadius: 16,
-      elevation: 6,
-    },
-  },
-  cardGradient: {
     padding: spacing.lg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.border.glass,
+    marginBottom: spacing.section,
+    ...shadows.diffusion,
   },
   childHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.md,
     marginBottom: spacing.md,
   },
-  childAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primary.main,
-    justifyContent: 'center',
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.primary.fixed,
     alignItems: 'center',
-    marginRight: spacing.sm,
-  },
-  childAvatarEmoji: {
-    fontSize: 32,
-  },
-  childInfo: {
-    flex: 1,
+    justifyContent: 'center',
   },
   childName: {
-    fontSize: 20,
-    fontWeight: typography.fontWeight.bold,
+    ...typography.styles.headlineLgMobile,
+    fontSize: typography.fontSize.lg,
     color: colors.text.onSurface,
-    marginBottom: 2,
   },
-  childDetails: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  measuredHint: {
-    fontSize: 12,
-    color: colors.text.tertiary,
-    marginTop: 2,
-  },
-  moreButton: {
-    padding: spacing.sm,
-  },
-  moreIcon: {
-    fontSize: 20,
-    color: colors.primary.main,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border.divider,
-    marginVertical: spacing.md,
-  },
-  noMeasure: {
-    textAlign: 'center',
-    color: colors.text.secondary,
-    paddingVertical: spacing.md,
+  childMeta: {
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
   },
-  measurementRow: {
+  metricsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: spacing.md,
+    gap: spacing.stackGap,
   },
-  measurementItem: {
-    alignItems: 'center',
+  metricCard: {
+    backgroundColor: colors.background.elevated,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
   },
-  measurementLabel: {
-    fontSize: 12,
+  metricLabel: {
+    ...typography.styles.labelCaps,
     color: colors.text.secondary,
     marginBottom: 4,
   },
-  measurementValue: {
-    fontSize: 18,
-    fontWeight: typography.fontWeight.bold,
+  metricValue: {
+    fontFamily: typography.fontFamily.extraBold,
+    fontSize: 28,
+    lineHeight: 34,
     color: colors.text.onSurface,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    alignSelf: 'flex-start',
-    gap: spacing.sm,
+  metricUnit: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: 16,
+    color: colors.primary.main,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: typography.fontWeight.semibold,
-  },
-  actionsContainer: {
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.text.onSurface,
-    marginBottom: spacing.md,
-  },
-  actionsGrid: {
+  menuGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: spacing.stackGap,
+    marginBottom: spacing.section,
   },
-  actionCard: {
-    width: (width - spacing.containerPadding * 2 - spacing.md) / 2,
+  zCard: {
     backgroundColor: colors.surface.lowest,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    alignItems: 'center',
-    shadowColor: colors.neutral.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  actionCardPrimary: {
-    borderWidth: 2,
-    borderColor: colors.primary.main,
-    backgroundColor: colors.primary.fixed,
-  },
-  actionIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primary.fixed,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  actionEmoji: {
-    fontSize: 28,
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: typography.fontWeight.semibold,
-    color: colors.text.onSurface,
-    textAlign: 'center',
-  },
-  zScoreWidget: {
     borderRadius: borderRadius.xl,
     padding: spacing.lg,
-    overflow: 'hidden',
-    marginBottom: spacing.xl,
+    ...shadows.diffusion,
   },
-  widgetTitle: {
-    fontSize: 18,
-    fontWeight: typography.fontWeight.bold,
+  zTitle: {
+    ...typography.styles.headlineLgMobile,
+    fontSize: typography.fontSize.lg,
     color: colors.text.onSurface,
-    marginBottom: spacing.xs,
   },
-  widgetSubtitle: {
-    fontSize: 14,
+  zSub: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
     marginBottom: spacing.lg,
+    marginTop: 4,
   },
-  zScoreBar: {
-    height: 40,
+  zBar: {
+    height: 12,
     backgroundColor: colors.effects.glassPink,
     borderRadius: borderRadius.full,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     position: 'relative',
     overflow: 'hidden',
   },
-  zScoreIndicator: {
+  zIndicator: {
     position: 'absolute',
     top: 0,
-    marginLeft: -2,
-    width: 4,
-    height: 40,
-    borderRadius: 2,
+    marginLeft: -3,
+    width: 6,
+    height: 12,
+    borderRadius: 3,
   },
-  zScoreLabels: {
+  zLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingTop: 10,
+    marginBottom: spacing.md,
   },
-  zScoreLabel: {
-    fontSize: 12,
+  zLabel: {
+    ...typography.styles.labelCaps,
     color: colors.text.secondary,
-    fontWeight: typography.fontWeight.semibold,
   },
-  zScoreResult: {
-    fontSize: 16,
-    fontWeight: typography.fontWeight.semibold,
+  zResult: {
+    ...typography.styles.bodyMd,
+    fontFamily: typography.fontFamily.semiBold,
     textAlign: 'center',
   },
-  zScoreResultMuted: {
-    fontSize: 15,
+  zMuted: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
     textAlign: 'center',
     paddingVertical: spacing.md,

@@ -1,326 +1,472 @@
-import React, { useState } from 'react';
+/**
+ * Growth Screen — grafik dari measurements Supabase (bukan mock)
+ * Visual: Growth Trends (desainuiux.md)
+ */
+
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Dimensions,
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, borderRadius } from '../theme';
-
-const { width } = Dimensions.get('window');
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { useAuth } from '../store/authStore';
+import { useChildStore } from '../store/childStore';
+import { ageLabelFromDob, useChildren } from '../hooks/useChildren';
+import {
+  getStuntingDisplay,
+  useChildMeasurements,
+  useLatestMeasurement,
+} from '../hooks/useMeasurements';
+import { calculateAgeInMonths } from '../utils/zScoreCalculator';
+import { ScreenHeader, SkeletonLoader } from '../components/common';
+import HapticService from '../services/HapticService';
+import type { MeasurementRow } from '../types/database';
 
 type MetricType = 'weight' | 'height' | 'head';
 
-interface Metric {
+const METRICS: {
   id: MetricType;
   label: string;
-  icon: string;
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
   unit: string;
+}[] = [
+  { id: 'weight', label: 'Berat', icon: 'scale-bathroom', unit: 'kg' },
+  { id: 'height', label: 'Tinggi', icon: 'human-male-height', unit: 'cm' },
+  { id: 'head', label: 'Lingkar Kepala', icon: 'head', unit: 'cm' },
+];
+
+function metricValue(m: MeasurementRow, metric: MetricType): number | null {
+  if (metric === 'weight') {
+    return m.weight_kg != null ? Number(m.weight_kg) : null;
+  }
+  if (metric === 'height') return Number(m.height_cm);
+  return m.head_circumference_cm != null
+    ? Number(m.head_circumference_cm)
+    : null;
 }
 
-interface DataPoint {
-  month: number;
-  value: number;
-  normal: boolean;
+function isNormalPoint(m: MeasurementRow): boolean {
+  const risk = m.stunting_risk;
+  return !risk || risk === 'normal';
 }
 
 export default function GrowthScreen() {
-  const [selectedChild, setSelectedChild] = useState('Aisha Putri');
-  const [selectedMetric, setSelectedMetric] = useState('weight');
+  const { user } = useAuth();
+  const setActiveChild = useChildStore((s) => s.setActiveChild);
+  const activeChildId = useChildStore((s) => s.activeChildId);
+  const { data: children = [], isPending: childrenLoading } = useChildren({
+    parentId: user?.id,
+  });
+  const [selectedMetric, setSelectedMetric] = useState<MetricType>('height');
 
-  const children = ['Aisha Putri', 'Budi Santoso'];
-  const metrics = [
-    { id: 'weight', label: 'Berat', icon: '⚖️', unit: 'kg' },
-    { id: 'height', label: 'Tinggi', icon: '📏', unit: 'cm' },
-    { id: 'head', label: 'Lingkar Kepala', icon: '⭕', unit: 'cm' },
-  ];
+  useEffect(() => {
+    if (children.length === 0) return;
+    const preferred = activeChildId
+      ? children.find((c) => c.id === activeChildId)
+      : undefined;
+    const next = preferred ?? children[0];
+    if (activeChildId === next.id) return;
+    setActiveChild({
+      id: next.id,
+      name: next.name,
+      gender: next.gender,
+      date_of_birth: next.date_of_birth,
+    });
+  }, [children, activeChildId, setActiveChild]);
 
-  // Sample data dengan satuan yang jelas
-  const growthData = {
-    weight: [
-      { month: 0, value: 3.2, normal: true },
-      { month: 2, value: 5.1, normal: true },
-      { month: 4, value: 6.8, normal: true },
-      { month: 6, value: 7.5, normal: true },
-      { month: 8, value: 8.2, normal: true },
-      { month: 12, value: 9.5, normal: true },
-    ],
-    height: [
-      { month: 0, value: 48.5, normal: true },
-      { month: 2, value: 56.2, normal: true },
-      { month: 4, value: 62.8, normal: true },
-      { month: 6, value: 66.3, normal: true },
-      { month: 8, value: 69.7, normal: true },
-      { month: 12, value: 75.0, normal: true },
-    ],
-    head: [
-      { month: 0, value: 34.5, normal: true },
-      { month: 2, value: 38.2, normal: true },
-      { month: 4, value: 40.8, normal: true },
-      { month: 6, value: 42.5, normal: true },
-      { month: 8, value: 43.8, normal: true },
-      { month: 12, value: 45.5, normal: true },
-    ],
+  const childId = activeChildId;
+  const activeChild = children.find((c) => c.id === childId) ?? null;
+
+  const { data: series = [], isPending: seriesLoading } =
+    useChildMeasurements(childId);
+  const { data: latest } = useLatestMeasurement(childId);
+
+  const chartPoints = useMemo(() => {
+    return series
+      .map((m) => {
+        const value = metricValue(m, selectedMetric);
+        if (value == null || Number.isNaN(value)) return null;
+        const ageMonths = activeChild
+          ? calculateAgeInMonths(activeChild.date_of_birth)
+          : 0;
+        let monthLabel = ageMonths;
+        if (activeChild?.date_of_birth && m.measured_at) {
+          const dob = new Date(activeChild.date_of_birth);
+          const at = new Date(m.measured_at);
+          monthLabel =
+            (at.getFullYear() - dob.getFullYear()) * 12 +
+            (at.getMonth() - dob.getMonth());
+          if (at.getDate() < dob.getDate()) monthLabel -= 1;
+          if (monthLabel < 0) monthLabel = 0;
+        }
+        return {
+          id: m.id,
+          month: monthLabel,
+          value,
+          normal: isNormalPoint(m),
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      month: number;
+      value: number;
+      normal: boolean;
+    }>;
+  }, [series, selectedMetric, activeChild]);
+
+  const currentMetric = METRICS.find((m) => m.id === selectedMetric)!;
+  const maxVal = Math.max(...chartPoints.map((d) => d.value), 1);
+
+  const latestDisplay = useMemo(() => {
+    if (!latest) return null;
+    const v = metricValue(latest, selectedMetric);
+    const stunting = getStuntingDisplay({
+      stunting_risk: latest.stunting_risk,
+      z_score_hfa: latest.z_score_hfa,
+      z_score_wfa: latest.z_score_wfa,
+    });
+    return { value: v, stunting, measured_at: latest.measured_at };
+  }, [latest, selectedMetric]);
+
+  const selectChild = async (id: string) => {
+    await HapticService.light();
+    const c = children.find((x) => x.id === id);
+    if (!c) return;
+    setActiveChild({
+      id: c.id,
+      name: c.name,
+      gender: c.gender,
+      date_of_birth: c.date_of_birth,
+    });
   };
-
-  const currentData = growthData[selectedMetric as keyof typeof growthData] || [];
-  const currentMetric = metrics.find((m) => m.id === selectedMetric);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView 
+      <ScreenHeader
+        title="Growth Trends"
+        brand
+        subtitle="Grafik dari pengukuran anak"
+      />
+
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Grafik Pertumbuhan</Text>
+        <View style={styles.intro}>
+          <Text style={styles.introTitle}>
+            {currentMetric.label} Analysis
+          </Text>
+          <Text style={styles.introSub}>
+            {activeChild
+              ? `Overview · ${ageLabelFromDob(activeChild.date_of_birth)}`
+              : 'Pilih anak untuk melihat tren'}
+          </Text>
         </View>
 
-        {/* Child Selector */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.childSelector}
-        >
-          {children.map((child) => (
-            <TouchableOpacity
-              key={child}
-              style={[
-                styles.childChip,
-                selectedChild === child && styles.childChipActive,
-              ]}
-              onPress={() => setSelectedChild(child)}
-            >
-              <Text
+        {childrenLoading ? (
+          <SkeletonLoader variant="list" count={1} />
+        ) : children.length === 0 ? (
+          <Text style={styles.empty}>
+            Belum ada anak. Tambahkan profil anak dulu.
+          </Text>
+        ) : (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.childSelector}
+            contentContainerStyle={styles.childSelectorContent}
+          >
+            {children.map((child) => (
+              <TouchableOpacity
+                key={child.id}
                 style={[
-                  styles.childChipText,
-                  selectedChild === child && styles.childChipTextActive,
+                  styles.childChip,
+                  childId === child.id && styles.childChipActive,
                 ]}
+                onPress={() => selectChild(child.id)}
               >
-                {child}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Text
+                  style={[
+                    styles.childChipText,
+                    childId === child.id && styles.childChipTextActive,
+                  ]}
+                >
+                  {child.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
-        {/* Metric Selector */}
         <View style={styles.metricSelector}>
-          {metrics.map((metric) => (
-            <TouchableOpacity
-              key={metric.id}
-              style={[
-                styles.metricButton,
-                selectedMetric === metric.id && styles.metricButtonActive,
-              ]}
-              onPress={() => setSelectedMetric(metric.id)}
-            >
-              <Text style={styles.metricIcon}>{metric.icon}</Text>
-              <Text
-                style={[
-                  styles.metricText,
-                  selectedMetric === metric.id && styles.metricTextActive,
-                ]}
+          {METRICS.map((metric) => {
+            const active = selectedMetric === metric.id;
+            return (
+              <TouchableOpacity
+                key={metric.id}
+                style={[styles.metricButton, active && styles.metricButtonActive]}
+                onPress={async () => {
+                  await HapticService.light();
+                  setSelectedMetric(metric.id);
+                }}
               >
-                {metric.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <MaterialCommunityIcons
+                  name={metric.icon}
+                  size={18}
+                  color={active ? colors.primary.main : colors.text.secondary}
+                />
+                <Text
+                  style={[styles.metricText, active && styles.metricTextActive]}
+                >
+                  {metric.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Chart Card */}
         <View style={styles.chartCard}>
-          <Text style={styles.chartTitle}>
-            📊 Grafik {currentMetric?.label}
-          </Text>
+          <View style={styles.chartHead}>
+            <View>
+              <Text style={styles.chartEyebrow}>Current {currentMetric.label}</Text>
+              <Text style={styles.chartValue}>
+                {latestDisplay?.value != null
+                  ? latestDisplay.value.toFixed(1)
+                  : '—'}{' '}
+                <Text style={styles.chartUnit}>{currentMetric.unit}</Text>
+              </Text>
+            </View>
+            {latestDisplay?.stunting ? (
+              <View style={styles.trendPill}>
+                <MaterialCommunityIcons
+                  name="trending-up"
+                  size={14}
+                  color={colors.primary.main}
+                />
+                <Text style={styles.trendPillText}>
+                  {latestDisplay.stunting.label}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
           <Text style={styles.chartSubtitle}>
-            Satuan: {currentMetric?.unit} • Berdasarkan Standar WHO
+            Data pengukuran · satuan {currentMetric.unit}
           </Text>
 
-          {/* Simple Bar Chart */}
-          <View style={styles.chartContainer}>
-            {currentData.map((item, index) => (
-              <View key={index} style={styles.barContainer}>
-                <View style={styles.barWrapper}>
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: (item.value / Math.max(...currentData.map(d => d.value))) * 150,
-                        backgroundColor: item.normal ? colors.status.success : colors.status.error,
-                      },
-                    ]}
-                  >
-                    <Text style={styles.barValue}>
-                      {item.value}{currentMetric?.id === 'height' || currentMetric?.id === 'head' ? ' cm' : ' kg'}
+          {seriesLoading ? (
+            <SkeletonLoader variant="stat" count={1} style={{ padding: 0 }} />
+          ) : chartPoints.length === 0 ? (
+            <Text style={styles.empty}>
+              Belum ada pengukuran untuk metrik ini.
+            </Text>
+          ) : (
+            <View style={styles.chartContainer}>
+              {chartPoints.slice(-8).map((item) => (
+                <View key={item.id} style={styles.barContainer}>
+                  <View style={styles.barWrapper}>
+                    <View
+                      style={[
+                        styles.bar,
+                        {
+                          height: Math.max(12, (item.value / maxVal) * 150),
+                          backgroundColor: item.normal
+                            ? colors.primary.main
+                            : colors.status.warning,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.barValue}>
+                        {item.value.toFixed(1)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.barLabel}>{item.month}bln</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.latestCard}>
+          <View style={styles.insightRow}>
+            <View style={styles.insightIcon}>
+              <MaterialCommunityIcons
+                name="auto-fix"
+                size={22}
+                color={colors.primary.onPrimary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.latestTitle}>Growth Summary</Text>
+              {!latestDisplay || latestDisplay.value == null ? (
+                <Text style={styles.emptyInline}>Belum ada pengukuran</Text>
+              ) : (
+                <View style={styles.latestRow}>
+                  <View style={styles.latestItem}>
+                    <Text style={styles.latestLabel}>Nilai</Text>
+                    <Text style={styles.latestValue}>
+                      {latestDisplay.value.toFixed(1)} {currentMetric.unit}
+                    </Text>
+                  </View>
+                  <View style={styles.latestItem}>
+                    <Text style={styles.latestLabel}>Status</Text>
+                    <Text
+                      style={[
+                        styles.latestValueSm,
+                        {
+                          color:
+                            latestDisplay.stunting?.color ??
+                            colors.text.secondary,
+                        },
+                      ]}
+                    >
+                      {latestDisplay.stunting?.label ?? '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.latestItem}>
+                    <Text style={styles.latestLabel}>Z TB/U</Text>
+                    <Text style={styles.latestValue}>
+                      {latest?.z_score_hfa != null
+                        ? Number(latest.z_score_hfa).toFixed(2)
+                        : '—'}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.barLabel}>{item.month}bln</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Legend */}
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.status.success }]} />
-              <Text style={styles.legendText}>Normal</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.status.error }]} />
-              <Text style={styles.legendText}>Perlu Perhatian</Text>
+              )}
             </View>
           </View>
         </View>
-
-        {/* Latest Measurement */}
-        <View style={styles.latestCard}>
-          <Text style={styles.latestTitle}>📊 Pengukuran Terakhir</Text>
-          <View style={styles.latestRow}>
-            <View style={styles.latestItem}>
-              <Text style={styles.latestLabel}>Nilai</Text>
-              <Text style={styles.latestValue}>
-                {currentData[currentData.length - 1]?.value} {currentMetric?.unit}
-              </Text>
-            </View>
-            <View style={styles.latestItem}>
-              <Text style={styles.latestLabel}>Usia</Text>
-              <Text style={styles.latestValue}>
-                {currentData[currentData.length - 1]?.month} bulan
-              </Text>
-            </View>
-            <View style={styles.latestItem}>
-              <Text style={styles.latestLabel}>Status</Text>
-              <Text style={[styles.latestValue, { color: colors.status.success }]}>
-                Normal ✓
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* AI Analysis Card */}
-        <View style={styles.aiCard}>
-          <Text style={styles.aiTitle}>🤖 Analisis AI</Text>
-          <Text style={styles.aiText}>
-            Pertumbuhan {selectedChild} berada dalam rentang normal sesuai standar WHO.
-            Teruskan pola makan sehat dan konsultasi rutin dengan dokter.
-          </Text>
-          <TouchableOpacity style={styles.aiButton}>
-            <Text style={styles.aiButtonText}>Lihat Detail Analisis →</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ height: 30 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF', // Solid white background
-  },
+  container: { flex: 1, backgroundColor: colors.background.default },
   scrollContent: {
-    paddingBottom: 100, // Extra padding untuk bottom tabs
-    backgroundColor: '#FFFFFF', // Solid white background
+    paddingHorizontal: spacing.containerPadding,
+    paddingBottom: 90,
+    gap: spacing.md,
   },
-  header: {
+  intro: { marginBottom: spacing.xs },
+  introTitle: {
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
+  },
+  introSub: {
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
+    opacity: 0.7,
+    marginTop: spacing.xs,
+  },
+  empty: {
+    textAlign: 'center',
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
     padding: spacing.lg,
-    paddingTop: spacing.sm,
   },
-  title: {
-    fontSize: typography.fontSize.xxl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
+  emptyInline: {
+    ...typography.styles.bodyMd,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
   },
-  childSelector: {
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-  },
+  childSelector: { marginBottom: spacing.xs },
+  childSelectorContent: { gap: spacing.sm, paddingRight: spacing.md },
   childChip: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
-    backgroundColor: '#F5F5F5', // Solid light gray
-    marginRight: spacing.md,
-    borderWidth: 2,
-    borderColor: colors.neutral.gray400,
+    backgroundColor: colors.surface.lowest,
+    borderWidth: 1,
+    borderColor: colors.border.divider,
+    ...shadows.sm,
   },
   childChipActive: {
-    backgroundColor: '#FF69B4', // Solid pink
-    borderColor: '#FF1493',
-    borderWidth: 3,
+    backgroundColor: colors.primary.main,
+    borderColor: colors.primary.main,
   },
   childChipText: {
+    ...typography.styles.buttonText,
     fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray600,
+    color: colors.text.secondary,
   },
-  childChipTextActive: {
-    color: colors.neutral.white,
-  },
+  childChipTextActive: { color: colors.primary.onPrimary },
   metricSelector: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   metricButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.xs,
     paddingVertical: spacing.md,
-    backgroundColor: '#F5F5F5', // Solid light gray
-    marginHorizontal: spacing.xs,
-    borderRadius: borderRadius.lg,
-    borderWidth: 3,
-    borderColor: colors.neutral.gray400,
+    backgroundColor: colors.surface.lowest,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.border.divider,
+    ...shadows.sm,
   },
   metricButtonActive: {
-    backgroundColor: '#FFE4F3', // Solid pink background
+    backgroundColor: colors.primary.fixed,
     borderColor: colors.primary.main,
-    borderWidth: 3,
-  },
-  metricIcon: {
-    fontSize: typography.fontSize.lg,
-    marginRight: spacing.xs,
   },
   metricText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.neutral.gray600,
+    ...typography.styles.buttonText,
+    fontSize: typography.fontSize.xs,
+    color: colors.text.secondary,
   },
-  metricTextActive: {
-    color: colors.primary.main,
-  },
+  metricTextActive: { color: colors.primary.main },
   chartCard: {
-    backgroundColor: '#FFFFFF', // Solid white
-    margin: spacing.lg,
-    marginTop: spacing.sm,
+    backgroundColor: colors.surface.lowest,
     padding: spacing.lg,
     borderRadius: borderRadius.xl,
-    borderWidth: 2,
-    borderColor: colors.neutral.gray300,
-    shadowColor: colors.neutral.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    ...shadows.diffusion,
   },
-  chartTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
+  chartHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  chartEyebrow: {
+    ...typography.styles.labelCaps,
+    color: colors.primary.main,
     marginBottom: spacing.xs,
   },
+  chartValue: {
+    ...typography.styles.headlineLg,
+    color: colors.text.onSurface,
+  },
+  chartUnit: {
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
+  },
+  trendPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(182, 0, 89, 0.1)',
+    paddingHorizontal: spacing.element,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  trendPillText: {
+    ...typography.styles.labelCaps,
+    fontSize: 10,
+    color: colors.primary.main,
+  },
   chartSubtitle: {
+    ...typography.styles.bodyMd,
     fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    color: colors.text.secondary,
     marginBottom: spacing.lg,
   },
   chartContainer: {
@@ -328,128 +474,61 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'flex-end',
     height: 180,
-    marginBottom: 20,
   },
-  barContainer: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  barWrapper: {
-    height: 150,
-    justifyContent: 'flex-end',
-    marginBottom: 8,
-  },
+  barContainer: { alignItems: 'center', flex: 1 },
+  barWrapper: { height: 150, justifyContent: 'flex-end', marginBottom: 8 },
   bar: {
-    width: 40,
-    borderRadius: 8,
+    width: 36,
+    borderRadius: borderRadius.sm,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 6,
+    paddingTop: 4,
   },
   barValue: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#FFF',
-    textAlign: 'center',
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.primary.onPrimary,
   },
   barLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  legend: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 12,
-  },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 6,
-  },
-  legendText: {
-    fontSize: 12,
-    color: '#666',
+    ...typography.styles.labelCaps,
+    fontSize: 10,
+    color: colors.text.secondary,
   },
   latestCard: {
-    backgroundColor: '#FFFFFF', // Solid white
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    backgroundColor: colors.surface.lowest,
     padding: spacing.lg,
     borderRadius: borderRadius.xl,
-    borderWidth: 2,
-    borderColor: colors.neutral.gray300,
-    shadowColor: colors.neutral.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    ...shadows.diffusion,
+  },
+  insightRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
+  insightIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.primary.main,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   latestTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
+    ...typography.styles.headlineLgMobile,
+    fontSize: 18,
+    color: colors.text.onSurface,
     marginBottom: spacing.md,
   },
-  latestRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  latestItem: {
-    alignItems: 'center',
-  },
+  latestRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  latestItem: { alignItems: 'flex-start', flex: 1 },
   latestLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.neutral.gray600,
+    ...typography.styles.labelCaps,
+    fontSize: 10,
+    color: colors.text.secondary,
     marginBottom: spacing.xs,
   },
   latestValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: typography.fontWeight.bold,
+    ...typography.styles.buttonText,
     color: colors.primary.main,
   },
-  aiCard: {
-    backgroundColor: '#F3E5F5', // Solid purple background
-    marginHorizontal: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 3,
-    borderLeftWidth: 6,
-    borderLeftColor: '#9C27B0',
-    borderColor: '#E1BEE7',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  aiTitle: {
-    fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.neutral.gray800,
-    marginBottom: spacing.md,
-  },
-  aiText: {
+  latestValueSm: {
+    ...typography.styles.buttonText,
     fontSize: typography.fontSize.sm,
-    color: colors.neutral.gray600,
-    lineHeight: 20,
-    marginBottom: spacing.md,
-  },
-  aiButton: {
-    backgroundColor: '#9C27B0',
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-  },
-  aiButtonText: {
-    color: colors.neutral.white,
-    fontSize: typography.fontSize.sm,
-    fontWeight: typography.fontWeight.semiBold,
   },
 });

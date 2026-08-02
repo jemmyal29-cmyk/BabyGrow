@@ -51,6 +51,132 @@ export class GeminiAIService {
    */
   setApiKey(key: string): void {
     this.apiKey = key;
+    this.apiUrl = `${this.baseURL}/${this.model}:generateContent?key=${this.apiKey}`;
+  }
+
+  /**
+   * Estimate toddler standing height (cm) from a photo via Gemini multimodal vision.
+   * Returns JSON-parsed height; never invents success when API key missing.
+   */
+  async estimateToddlerHeightFromImage(
+    base64Image: string,
+    mimeType: string = 'image/jpeg'
+  ): Promise<{
+    height_cm: number;
+    confidence: 'high' | 'medium' | 'low';
+    notes: string;
+  }> {
+    if (!this.isConfigured()) {
+      throw new Error(
+        'Gemini API key belum di-set. Tambahkan EXPO_PUBLIC_GEMINI_API_KEY di .env'
+      );
+    }
+
+    const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
+
+    const prompt = `You are a pediatric growth measurement assistant for BabyGrow (stunting prevention app).
+Analyze this photo of a toddler/child intended for standing height estimation.
+
+Rules:
+- Estimate standing height in centimeters (whole number or one decimal).
+- Child ages typically 0–60 months; valid height range ~40–130 cm.
+- If the image does not clearly show a standing child from head to feet, set height_cm to null and explain in notes.
+- Prefer conservative estimates. Do not invent precision you don't have.
+- Respond with ONLY valid JSON (no markdown):
+{"height_cm": number|null, "confidence": "high"|"medium"|"low", "notes": "short Indonesian note"}`;
+
+    const payload = {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: cleanBase64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        topK: 32,
+        topP: 0.9,
+        maxOutputTokens: 256,
+      },
+    };
+
+    try {
+      const response = await axios.post(
+        `${this.baseURL}/${this.model}:generateContent?key=${this.apiKey}`,
+        payload,
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 45000,
+        }
+      );
+
+      const text: string =
+        response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      if (!text) {
+        throw new Error('Respons Gemini kosong');
+      }
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Gemini tidak mengembalikan JSON yang valid');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        height_cm: number | null;
+        confidence?: 'high' | 'medium' | 'low';
+        notes?: string;
+      };
+
+      if (parsed.height_cm == null || !Number.isFinite(Number(parsed.height_cm))) {
+        throw new Error(
+          parsed.notes ||
+            'Tinggi tidak terdeteksi. Pastikan anak berdiri tegak dan terlihat dari kepala sampai kaki.'
+        );
+      }
+
+      const height = Math.round(Number(parsed.height_cm) * 10) / 10;
+      if (height < 40 || height > 130) {
+        throw new Error(
+          `Estimasi ${height} cm di luar rentang valid (40–130 cm). Ambil ulang foto.`
+        );
+      }
+
+      return {
+        height_cm: height,
+        confidence: parsed.confidence ?? 'medium',
+        notes: parsed.notes?.trim() || 'Estimasi tinggi berdiri dari foto',
+      };
+    } catch (error: any) {
+      if (error?.message && !error?.response) {
+        throw error;
+      }
+      const errorMsg =
+        error.response?.data?.error?.message || error.message || 'Unknown error';
+      const errorCode =
+        error.response?.data?.error?.code || error.response?.status;
+
+      if (
+        errorCode === 429 ||
+        String(errorMsg).toLowerCase().includes('quota')
+      ) {
+        throw new Error('Kuota Gemini API habis. Coba lagi nanti.');
+      }
+      if (
+        errorCode === 403 ||
+        String(errorMsg).toLowerCase().includes('api key')
+      ) {
+        throw new Error('Gemini API key tidak valid atau belum aktif.');
+      }
+      throw new Error(errorMsg);
+    }
   }
 
   /**
@@ -716,9 +842,9 @@ Answer the following question according to these guidelines:`,
    * Check if API key is configured
    */
   isConfigured(): boolean {
-    return this.apiKey && 
-           this.apiKey.length > 30 && 
-           this.apiKey.startsWith('AIza');
+    return Boolean(
+      this.apiKey && this.apiKey.length > 30 && this.apiKey.startsWith('AIza')
+    );
   }
 
   /**

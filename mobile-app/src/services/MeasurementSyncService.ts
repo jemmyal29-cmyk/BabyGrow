@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo, { type NetInfoSubscription } from '@react-native-community/netinfo';
 import MQTTService from './MQTTService';
+import BLEService, { type BLEMeasurement } from './BLEService';
 import { supabase } from './SupabaseClient';
 import { useChildStore, type ActiveChildMeta } from '../store/childStore';
 import { useSyncStore } from '../store/syncStore';
@@ -13,12 +14,13 @@ import { invalidateMeasurementQueries } from '../hooks/useMeasurements';
 import type { Gender, MeasurementRow, StuntingRisk } from '../types/database';
 import type { MQTTMeasurement } from '../types';
 import {
-  calculateAgeInMonths,
-  calculateHeightForAge,
-  calculateWeightForAge,
-  calculateWeightForHeight,
+  computeAllZScores,
   determineStuntingRisk,
+  lmsZScore,
 } from '../utils/zScoreCalculator';
+import { logger } from '../utils/logger';
+
+export { lmsZScore };
 
 const WINDOW_SIZE = 5;
 const STABILITY_STD_CM = 0.35;
@@ -80,18 +82,6 @@ function stdDev(values: number[]): number {
   return Math.sqrt(variance);
 }
 
-/** WHO LMS: Z = ((value/M)^L - 1) / (L*S); L≈0 → ln form */
-export function lmsZScore(value: number, l: number, m: number, s: number): number {
-  if (!value || !m || !s) return 0;
-  let z: number;
-  if (Math.abs(l) < 1e-8) {
-    z = Math.log(value / m) / s;
-  } else {
-    z = (Math.pow(value / m, l) - 1) / (l * s);
-  }
-  return Math.round(z * 100) / 100;
-}
-
 function mapStuntingRisk(
   level: ReturnType<typeof determineStuntingRisk>['level']
 ): StuntingRisk {
@@ -104,13 +94,12 @@ class MeasurementSyncService {
   private buffer: MQTTMeasurement[] = [];
   private lastPersistedKey: string | null = null;
   private unsubscribeMqtt: (() => void) | null = null;
+  private unsubscribeBle: (() => void) | null = null;
   private unsubscribeStore: (() => void) | null = null;
   private netInfoUnsub: NetInfoSubscription | null = null;
   private persisting = false;
   private processingQueue = false;
   private activeChild: ActiveChildMeta | null = null;
-  /** In-memory LMS cache: `${indicator}:${gender}:${age}` */
-  private lmsCache = new Map<string, WhoLmsParams>();
 
   static getInstance(): MeasurementSyncService {
     if (!MeasurementSyncService.instance) {
@@ -150,6 +139,11 @@ class MeasurementSyncService {
       void this.onMeasurement(data);
     });
 
+    // BLE → same sync path (source: 'ble'); complete packets, no MQTT stability window
+    this.unsubscribeBle = BLEService.subscribeMeasurements((data) => {
+      void this.onBleMeasurement(data);
+    });
+
     this.netInfoUnsub = NetInfo.addEventListener((state) => {
       const isConnected = state.isConnected === true;
       const isInternetReachable = state.isInternetReachable ?? null;
@@ -168,6 +162,8 @@ class MeasurementSyncService {
   stop(): void {
     this.unsubscribeMqtt?.();
     this.unsubscribeMqtt = null;
+    this.unsubscribeBle?.();
+    this.unsubscribeBle = null;
     this.unsubscribeStore?.();
     this.unsubscribeStore = null;
     this.netInfoUnsub?.();
@@ -176,46 +172,7 @@ class MeasurementSyncService {
   }
 
   /**
-   * Fetch L, M, S from public.who_standards for age_months + gender.
-   */
-  async calculateZScoreFromDB(params: {
-    indicator: WhoIndicator;
-    gender: Gender;
-    age_months: number;
-  }): Promise<WhoLmsParams | null> {
-    const age = Math.max(0, Math.min(60, Math.round(params.age_months)));
-    const cacheKey = `${params.indicator}:${params.gender}:${age}`;
-    const cached = this.lmsCache.get(cacheKey);
-    if (cached) return cached;
-
-    const { data, error } = await supabase
-      .from('who_standards')
-      .select('l, m, s, age_months, indicator, gender')
-      .eq('indicator', params.indicator)
-      .eq('gender', params.gender)
-      .eq('age_months', age)
-      .maybeSingle();
-
-    if (error) {
-      console.warn('[MeasurementSync] who_standards lookup failed', error.message);
-      return null;
-    }
-    if (!data) return null;
-
-    const row: WhoLmsParams = {
-      l: Number(data.l),
-      m: Number(data.m),
-      s: Number(data.s),
-      age_months: Number(data.age_months),
-      indicator: data.indicator as WhoIndicator,
-      gender: data.gender as Gender,
-    };
-    this.lmsCache.set(cacheKey, row);
-    return row;
-  }
-
-  /**
-   * Compute HFA / WFA (and WFH via local tables if weight present) using DB LMS first.
+   * WHO LMS via zScoreCalculator (Supabase-first + local circuit breaker).
    */
   async computeZScoresFromWhoStandards(input: {
     height_cm: number;
@@ -223,99 +180,21 @@ class MeasurementSyncService {
     gender: Gender;
     date_of_birth: string;
   }): Promise<MeasurementZScores> {
-    const age_months = calculateAgeInMonths(input.date_of_birth);
-    const weight =
-      input.weight_kg && input.weight_kg > 0 ? input.weight_kg : null;
-
-    try {
-      const hfaLms = await this.calculateZScoreFromDB({
-        indicator: 'hfa',
-        gender: input.gender,
-        age_months,
-      });
-
-      if (!hfaLms) {
-        return this.fallbackLocalZScores(input, age_months);
+    const scores = await computeAllZScores(
+      { gender: input.gender, date_of_birth: input.date_of_birth },
+      {
+        height_cm: input.height_cm,
+        weight_kg: input.weight_kg,
       }
-
-      const z_score_hfa = lmsZScore(
-        input.height_cm,
-        hfaLms.l,
-        hfaLms.m,
-        hfaLms.s
-      );
-
-      let z_score_wfa: number | null = null;
-      let z_score_wfh: number | null = null;
-
-      if (weight) {
-        const wfaLms = await this.calculateZScoreFromDB({
-          indicator: 'wfa',
-          gender: input.gender,
-          age_months,
-        });
-        if (wfaLms) {
-          z_score_wfa = lmsZScore(weight, wfaLms.l, wfaLms.m, wfaLms.s);
-        }
-
-        // WFH not seeded (0–24 age-based only) — keep local calculator
-        z_score_wfh = calculateWeightForHeight(
-          weight,
-          input.height_cm,
-          input.gender
-        ).zscore;
-      }
-
-      return {
-        z_score_hfa,
-        z_score_wfa,
-        z_score_wfh,
-        stunting_risk: mapStuntingRisk(
-          determineStuntingRisk(z_score_hfa).level
-        ),
-        age_months,
-        source: 'db',
-      };
-    } catch (err) {
-      console.warn('[MeasurementSync] DB Z-score failed, local fallback', err);
-      return this.fallbackLocalZScores(input, age_months);
-    }
-  }
-
-  private fallbackLocalZScores(
-    input: {
-      height_cm: number;
-      weight_kg?: number | null;
-      gender: Gender;
-      date_of_birth: string;
-    },
-    age_months: number
-  ): MeasurementZScores {
-    const hfa = calculateHeightForAge(
-      input.height_cm,
-      age_months,
-      input.gender
     );
-    const weight =
-      input.weight_kg && input.weight_kg > 0 ? input.weight_kg : null;
-    let z_score_wfa: number | null = null;
-    let z_score_wfh: number | null = null;
-    if (weight) {
-      z_score_wfa = calculateWeightForAge(weight, age_months, input.gender)
-        .zscore;
-      z_score_wfh = calculateWeightForHeight(
-        weight,
-        input.height_cm,
-        input.gender
-      ).zscore;
-    }
+
     return {
-      z_score_hfa: hfa.zscore,
-      z_score_wfa,
-      z_score_wfh,
-      stunting_risk: mapStuntingRisk(determineStuntingRisk(hfa.zscore).level),
-      age_months,
-      source: 'local_fallback',
+      z_score_hfa: scores.z_score_hfa,
+      z_score_wfa: scores.z_score_wfa,
+      z_score_wfh: scores.z_score_wfh,
+      stunting_risk: mapStuntingRisk(scores.stunting_risk),
+      age_months: scores.age_months,
+      source: scores.source === 'supabase' ? 'db' : 'local_fallback',
     };
   }
 
@@ -371,12 +250,12 @@ class MeasurementSyncService {
 
       if (!online) {
         await this.enqueue(item);
-        console.log('[MeasurementSync] offline — queued', item.local_id);
+        logger.debug('[MeasurementSync] offline — queued', item.local_id);
         return null;
       }
 
       const row = await this.insertMeasurement(item);
-      console.log(
+      logger.debug(
         '[MeasurementSync] saved',
         row.height_cm,
         'cm | HFA z=',
@@ -501,7 +380,7 @@ class MeasurementSyncService {
 
       await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
       useSyncStore.getState().setQueueLength(remaining.length);
-      console.log(
+      logger.debug(
         `[MeasurementSync] processQueue sent=${sent} remaining=${remaining.length}`
       );
       return { sent, remaining: remaining.length };
@@ -554,6 +433,44 @@ class MeasurementSyncService {
     while (queue.length > MAX_QUEUE) queue.shift();
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
     useSyncStore.getState().setQueueLength(queue.length);
+  }
+
+  private async onBleMeasurement(data: BLEMeasurement): Promise<void> {
+    const child = this.activeChild ?? useChildStore.getState().activeChild;
+    if (!child?.id) {
+      logger.debug('[MeasurementSync] BLE measurement ignored — no active child');
+      return;
+    }
+    if (!data.height_cm || data.height_cm <= 0) return;
+
+    const key = `ble_${data.height_cm.toFixed(1)}_${(data.weight_kg || 0).toFixed(1)}`;
+    if (key === this.lastPersistedKey || this.persisting) return;
+
+    this.persisting = true;
+    try {
+      await this.syncToSupabase({
+        child_id: child.id,
+        height_cm: data.height_cm,
+        weight_kg: data.weight_kg > 0 ? data.weight_kg : null,
+        source: 'ble',
+        device_id: data.deviceId ?? null,
+        measured_at: data.timestamp || new Date().toISOString(),
+        gender: child.gender,
+        date_of_birth: child.date_of_birth,
+      });
+      this.lastPersistedKey = key;
+      logger.debug(
+        '[MeasurementSync] BLE saved',
+        data.height_cm,
+        'cm /',
+        data.weight_kg,
+        'kg'
+      );
+    } catch (error) {
+      console.error('[MeasurementSync] BLE syncToSupabase error', error);
+    } finally {
+      this.persisting = false;
+    }
   }
 
   private async onMeasurement(data: MQTTMeasurement): Promise<void> {

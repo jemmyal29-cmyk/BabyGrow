@@ -92,18 +92,20 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface.lowest,
-    borderWidth: 1,
+    backgroundColor: colors.surface.low,
+    borderWidth: 0,
     borderColor: colors.outline.variant,
-    borderRadius: borderRadius.md,
-    minHeight: 56,
+    borderRadius: borderRadius.full,
+    minHeight: 64,
   },
   inputContainerFocused: {
     borderColor: colors.primary.main,
     borderWidth: 2,
+    backgroundColor: colors.surface.lowest,
   },
   inputContainerError: {
     borderColor: colors.status.error,
+    borderWidth: 2,
   },
   input: {
     flex: 1,
@@ -122,11 +124,13 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
     color: colors.status.error,
     marginTop: spacing.xs,
   },
   helperText: {
     fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.medium,
     color: colors.text.secondary,
     marginTop: spacing.xs,
   },

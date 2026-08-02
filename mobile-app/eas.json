@@ -7,21 +7,24 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
       },
-      "env": {
-        "EAS_NO_VCS": "1"
+      "ios": {
+        "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "environment": "production",
       "android": {
         "buildType": "apk"
       }

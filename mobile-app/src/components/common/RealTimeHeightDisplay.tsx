@@ -8,6 +8,7 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import BLEService from '../../services/BLEService';
+import {colors, typography, spacing, borderRadius, shadows} from '../../theme';
 
 interface RealTimeHeightDisplayProps {
   visible: boolean;
@@ -73,14 +74,14 @@ export const RealTimeHeightDisplay: React.FC<RealTimeHeightDisplayProps> = ({
 
   const glowColor = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['rgba(76, 175, 80, 0)', 'rgba(76, 175, 80, 0.6)'],
+    outputRange: ['transparent', colors.status.success],
   });
 
   return (
     <Animated.View style={[styles.container, { transform: [{ scale: pulseAnim }] }]}>
       <BlurView intensity={100} tint="dark" style={styles.blurContainer}>
         <LinearGradient
-          colors={['rgba(76, 175, 80, 0.3)', 'rgba(46, 125, 50, 0.3)']}
+          colors={[colors.tertiary.container, colors.tertiary.main]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.gradient}
@@ -106,75 +107,76 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     top: 100,
-    right: 16,
+    right: spacing.md,
     zIndex: 1000,
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
-    shadowColor: '#4CAF50',
+    shadowColor: colors.status.success,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
     elevation: 12,
   },
   blurContainer: {
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: colors.effects.glassBlur,
   },
   gradient: {
-    padding: 16,
-    borderRadius: 20,
+    padding: spacing.md,
+    borderRadius: borderRadius.xl,
+    opacity: 0.95,
   },
   glowRing: {
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 20,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
   },
   content: {
     alignItems: 'center',
     minWidth: 120,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
+    ...typography.styles.labelCaps,
+    color: colors.text.inverse,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   value: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: '#FFFFFF',
+    fontSize: typography.fontSize.display,
+    fontWeight: typography.fontWeight.extraBold,
+    color: colors.text.inverse,
     letterSpacing: -1,
   },
   unit: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 4,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.inverse,
+    opacity: 0.9,
+    marginTop: spacing.xs,
   },
   indicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
+    marginTop: spacing.element,
+    paddingHorizontal: spacing.element,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.effects.glassWhite,
+    borderRadius: borderRadius.md,
   },
   dot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-    backgroundColor: '#4CAF50',
+    borderRadius: borderRadius.xs,
+    backgroundColor: colors.status.success,
     marginRight: 6,
   },
   indicatorText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.inverse,
     letterSpacing: 1,
   },
 });

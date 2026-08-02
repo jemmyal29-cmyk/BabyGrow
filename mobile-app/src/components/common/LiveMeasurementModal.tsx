@@ -15,7 +15,7 @@ import {
   Easing,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import {colors, typography, spacing, borderRadius, shadows} from '../../theme';
 import MQTTService from '../../services/MQTTService';
 const mqttService = MQTTService.getInstance();
 // import { useDarkMode } from '../../hooks/useDarkMode';
@@ -131,7 +131,7 @@ export default function LiveMeasurementModal({
   };
 
   const glowStyle = {
-    shadowColor: colors.pink.main,
+    shadowColor: colors.primary.main,
     shadowOpacity: glowAnim,
     shadowRadius: glowAnim.interpolate({
       inputRange: [0, 1],
@@ -152,13 +152,13 @@ export default function LiveMeasurementModal({
       >
         <View style={[
           styles.modalContent,
-          { backgroundColor: isDarkMode ? 'rgba(33, 37, 41, 0.95)' : 'rgba(255, 255, 255, 0.95)' }
+          { backgroundColor: isDarkMode ? colors.neutral.gray800 : colors.surface.lowest }
         ]}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={[
               styles.title,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
+              { color: isDarkMode ? colors.text.inverse : colors.text.primary }
             ]}>
               📏 Pengukuran Live
             </Text>
@@ -174,7 +174,7 @@ export default function LiveMeasurementModal({
               style={[
                 styles.measurementCard,
                 {
-                  backgroundColor: isDarkMode ? 'rgba(255, 105, 180, 0.15)' : 'rgba(255, 105, 180, 0.1)',
+                  backgroundColor: colors.effects.glassPink,
                   transform: [
                     { scale: pulseAnim },
                     { 
@@ -191,13 +191,13 @@ export default function LiveMeasurementModal({
               <Text style={styles.measurementIcon}>⚖️</Text>
               <Text style={[
                 styles.measurementLabel,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
+                { color: isDarkMode ? colors.text.inverse : colors.text.secondary }
               ]}>
                 Berat Badan
               </Text>
               <Text style={[
                 styles.measurementValue,
-                { color: isDarkMode ? colors.pink.main : colors.pink.main }
+                { color: colors.primary.main }
               ]}>
                 {liveWeight > 0 ? `${liveWeight.toFixed(1)} kg` : '-- kg'}
               </Text>
@@ -208,7 +208,7 @@ export default function LiveMeasurementModal({
               style={[
                 styles.measurementCard,
                 {
-                  backgroundColor: isDarkMode ? 'rgba(255, 105, 180, 0.15)' : 'rgba(255, 105, 180, 0.1)',
+                  backgroundColor: colors.effects.glassPink,
                   transform: [
                     { scale: pulseAnim },
                     { 
@@ -225,13 +225,13 @@ export default function LiveMeasurementModal({
               <Text style={styles.measurementIcon}>📏</Text>
               <Text style={[
                 styles.measurementLabel,
-                { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
+                { color: isDarkMode ? colors.text.inverse : colors.text.secondary }
               ]}>
                 Tinggi Saat Ini
               </Text>
               <Text style={[
                 styles.currentValue,
-                { color: isDarkMode ? colors.pink[300] : colors.pink.main }
+                { color: isDarkMode ? colors.primary.container : colors.primary.main }
               ]}>
                 {liveHeight > 0 ? `${liveHeight.toFixed(1)} cm` : '-- cm'}
               </Text>
@@ -242,11 +242,11 @@ export default function LiveMeasurementModal({
           <View style={styles.statusContainer}>
             <View style={[
               styles.statusDot,
-              { backgroundColor: isReceivingData ? '#4CAF50' : '#FFC107' }
+              { backgroundColor: isReceivingData ? colors.status.success : colors.status.warning }
             ]} />
             <Text style={[
               styles.statusText,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
+              { color: isDarkMode ? colors.text.inverse : colors.text.secondary }
             ]}>
               {isReceivingData ? '📡 Menerima data real-time' : '⏳ Menunggu data...'}
             </Text>
@@ -256,25 +256,25 @@ export default function LiveMeasurementModal({
           <View style={styles.instructionsContainer}>
             <Text style={[
               styles.instructionsTitle,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.primary }
+              { color: isDarkMode ? colors.text.inverse : colors.text.primary }
             ]}>
               Instruksi:
             </Text>
             <Text style={[
               styles.instructionsText,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
+              { color: isDarkMode ? colors.text.inverse : colors.text.secondary }
             ]}>
               • Pastikan anak berdiri stabil di timbangan
             </Text>
             <Text style={[
               styles.instructionsText,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
+              { color: isDarkMode ? colors.text.inverse : colors.text.secondary }
             ]}>
               • Tunggu hingga angka stabil
             </Text>
             <Text style={[
               styles.instructionsText,
-              { color: isDarkMode ? '#FFFFFF' : colors.text.secondary }
+              { color: isDarkMode ? colors.text.inverse : colors.text.secondary }
             ]}>
               • Tap "Selesai" untuk menyimpan hasil
             </Text>
@@ -295,7 +295,7 @@ export default function LiveMeasurementModal({
                 styles.primaryButton,
                 { 
                   opacity: (liveWeight > 0 || liveHeight > 0) ? 1 : 0.6,
-                  backgroundColor: isDarkMode ? colors.pink[400] : colors.pink.main 
+                  backgroundColor: isDarkMode ? colors.primary.container : colors.primary.main 
                 }
               ]}
               onPress={handleDone}
@@ -337,12 +337,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: borderRadius.full,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: colors.effects.shadowLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeIcon: {
-    fontSize: 20,
+    fontSize: typography.fontSize.lg,
     color: colors.text.secondary,
   },
   dataContainer: {
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
     ...shadows.soft,
   },
   measurementIcon: {
-    fontSize: 48,
+    fontSize: typography.fontSize.display,
     marginBottom: spacing.sm,
   },
   measurementLabel: {
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   statusDot: {
     width: 12,
     height: 12,
-    borderRadius: 6,
+    borderRadius: borderRadius.sm,
   },
   statusText: {
     fontSize: typography.fontSize.md,
@@ -391,12 +391,12 @@ const styles = StyleSheet.create({
   },
   instructionsTitle: {
     fontSize: typography.fontSize.lg,
-    fontWeight: '600',
+    fontWeight: typography.fontWeight.semiBold,
     marginBottom: spacing.sm,
   },
   instructionsText: {
     fontSize: typography.fontSize.sm,
-    lineHeight: 20,
+    lineHeight: typography.lineHeight.button,
     marginBottom: spacing.xs,
   },
   actionButtons: {
@@ -412,27 +412,27 @@ const styles = StyleSheet.create({
     ...shadows.standard,
   },
   primaryButton: {
-    backgroundColor: colors.pink.main,
+    backgroundColor: colors.primary.main,
   },
   currentValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: typography.fontSize.xl,
+    fontWeight: typography.fontWeight.bold,
     textAlign: 'center',
-    marginVertical: 8,
+    marginVertical: spacing.sm,
   },
   secondaryButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface.lowest,
     borderWidth: 2,
-    borderColor: colors.pink.main,
+    borderColor: colors.primary.main,
   },
   primaryButtonText: {
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.bold as any,
-    color: '#FFFFFF',
+    color: colors.text.inverse,
   },
   secondaryButtonText: {
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.bold as any,
-    color: colors.pink.main,
+    color: colors.primary.main,
   },
 });

@@ -10,7 +10,10 @@ export interface ProfileRow {
   id: string;
   email: string;
   full_name: string;
+  /** Canonical app RBAC — preferred */
   role: UserRole;
+  /** Present after migrate-profiles.sql when legacy enum `role` still exists */
+  role_app?: UserRole | string | null;
   phone: string | null;
   avatar_url: string | null;
   puskesmas: string | null;
@@ -29,6 +32,14 @@ export interface ChildRow {
   birth_weight: number | null;
   birth_height: number | null;
   photo_url: string | null;
+  /** Data orang tua (opsional — setelah migrate-parental-metrics.sql) */
+  mother_height_cm?: number | null;
+  father_height_cm?: number | null;
+  mother_weight_kg?: number | null;
+  father_weight_kg?: number | null;
+  mother_blood?: string | null;
+  father_blood?: string | null;
+  child_blood?: string | null;
   created_at: string;
   updated_at: string;
 }

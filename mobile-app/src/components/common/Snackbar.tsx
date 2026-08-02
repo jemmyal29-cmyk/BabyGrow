@@ -11,6 +11,7 @@ import {
   Dimensions,
   StyleSheet,
 } from 'react-native';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -64,13 +65,13 @@ export const Snackbar: React.FC<SnackbarProps> = ({
   const getColors = () => {
     switch (type) {
       case 'success':
-        return { bg: '#4CAF50', icon: '✅' };
+        return { bg: colors.status.success, icon: '✅' };
       case 'error':
-        return { bg: '#F44336', icon: '❌' };
+        return { bg: colors.status.error, icon: '❌' };
       case 'warning':
-        return { bg: '#FF9800', icon: '⚠️' };
+        return { bg: colors.status.warning, icon: '⚠️' };
       default:
-        return { bg: '#FF69B4', icon: '💗' };
+        return { bg: colors.primary.main, icon: '💗' };
     }
   };
 
@@ -106,32 +107,25 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 100,
-    left: 20,
-    right: 20,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    left: spacing.lg,
+    right: spacing.lg,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.element,
     flexDirection: 'row',
     alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...shadows.primaryGlow,
     zIndex: 1000,
   },
   icon: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: typography.fontSize.md,
+    marginRight: spacing.sm,
   },
   message: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.inverse,
   },
 });
 

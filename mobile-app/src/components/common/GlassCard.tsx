@@ -1,12 +1,10 @@
 /**
- * GlassCard Component
- * Glassmorphism card dengan efek transparan & blur
- * Filosofi: VIBRANT PINK & ELEGANT WHITE
+ * GlassCard — glassmorphism (desainuiux.md .glass-bg)
  */
 
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { colors, shadows } from '../../theme';
+import { colors, shadows, spacing, borderRadius } from '../../theme';
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -19,24 +17,18 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   children,
   variant = 'pink',
   style,
-  blur = 'medium',
 }) => {
-  const backgroundColor = variant === 'pink' 
-    ? colors.effects.glassPink 
-    : colors.effects.glassWhite;
+  const backgroundColor =
+    variant === 'pink' ? colors.effects.glassPink : colors.effects.glassWhite;
 
-  const borderColor = variant === 'pink'
-    ? 'rgba(255, 133, 161, 0.3)'
-    : 'rgba(255, 255, 255, 0.5)';
+  const borderColor =
+    variant === 'pink' ? colors.border.glass : colors.effects.glassBlur;
 
   return (
     <View
       style={[
         styles.container,
-        {
-          backgroundColor,
-          borderColor,
-        },
+        { backgroundColor, borderColor },
         shadows.md,
         style,
       ]}
@@ -48,11 +40,9 @@ export const GlassCard: React.FC<GlassCardProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    padding: 20,
-    // Note: Real blur effect requires react-native-blur library
-    // For now, we use transparency to simulate glass effect
+    padding: spacing.lg,
   },
 });
 

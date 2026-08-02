@@ -1,15 +1,19 @@
 /**
  * MQTT Service — Singleton (Paho MQTT over WebSockets)
- * Broker default: EMQX public WSS
+ * Broker: HiveMQ Cloud / EMQX via WSS (env-driven)
  *
  * Persistence contract:
  * - This service ONLY normalizes + emits `measurement` events.
  * - Never insert to Supabase here.
  * - `MeasurementSyncService` owns Z-score (who_standards) + offline queue + insert.
+ *
+ * Connectivity:
+ * - Silent circuit breaker + exponential backoff reconnect (no UI alerts).
  */
 
 import { Client, Message } from 'paho-mqtt';
 import type { MQTTMeasurement, MQTTConnectionStatus } from '../types';
+import { logger } from '../utils/logger';
 
 type EventType =
   | 'connected'
@@ -24,17 +28,28 @@ type EventListener = (data?: unknown) => void;
 const DEFAULT_WS_URL =
   process.env.EXPO_PUBLIC_MQTT_WS_URL || 'wss://broker.emqx.io:8084/mqtt';
 const DEFAULT_TOPIC =
-  process.env.EXPO_PUBLIC_MQTT_TOPIC || 'babygrow/data/sensor';
+  process.env.EXPO_PUBLIC_MQTT_TOPIC || 'babygrow/measurements';
+const MQTT_USERNAME = process.env.EXPO_PUBLIC_MQTT_USERNAME?.trim() || '';
+const MQTT_PASSWORD = process.env.EXPO_PUBLIC_MQTT_PASSWORD?.trim() || '';
+const MQTT_CLIENT_PREFIX =
+  process.env.EXPO_PUBLIC_MQTT_CLIENT_PREFIX?.trim() || 'babygrow';
 
-function parseWsUrl(wsUrl: string): { host: string; port: number; path: string; useSSL: boolean } {
+/** After this many failures, cool down before retrying */
+const CIRCUIT_FAILURE_THRESHOLD = 6;
+const CIRCUIT_COOLDOWN_MS = 60_000;
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+
+function parseWsUrl(wsUrl: string): {
+  host: string;
+  port: number;
+  path: string;
+  useSSL: boolean;
+} {
   try {
     const url = new URL(wsUrl);
     const useSSL = url.protocol === 'wss:';
-    const port = url.port
-      ? Number(url.port)
-      : useSSL
-        ? 443
-        : 80;
+    const port = url.port ? Number(url.port) : useSSL ? 443 : 80;
     return {
       host: url.hostname,
       port,
@@ -56,11 +71,22 @@ class MQTTService {
   private latestMeasurement: MQTTMeasurement | null = null;
   private eventListeners = new Map<EventType, Set<EventListener>>();
   private connecting = false;
+  private intentionalDisconnect = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private circuitOpenUntil = 0;
 
   private constructor() {
-    (['connected', 'disconnected', 'measurement', 'error', 'reconnecting', 'offline'] as EventType[]).forEach(
-      (e) => this.eventListeners.set(e, new Set())
-    );
+    (
+      [
+        'connected',
+        'disconnected',
+        'measurement',
+        'error',
+        'reconnecting',
+        'offline',
+      ] as EventType[]
+    ).forEach((e) => this.eventListeners.set(e, new Set()));
   }
 
   static getInstance(): MQTTService {
@@ -68,6 +94,20 @@ class MQTTService {
       MQTTService.instance = new MQTTService();
     }
     return MQTTService.instance;
+  }
+
+  getTopic(): string {
+    return this.topic;
+  }
+
+  setTopic(topic: string): void {
+    const next = topic.trim();
+    if (!next || next === this.topic) return;
+    if (this.connected && this.subscriptions.has(this.topic)) {
+      this.unsubscribe(this.topic);
+    }
+    this.topic = next;
+    if (this.connected) this.subscribe(this.topic);
   }
 
   subscribeMeasurements(callback: (data: MQTTMeasurement) => void): () => void {
@@ -94,13 +134,18 @@ class MQTTService {
     return 'poor';
   }
 
+  /**
+   * Normalize ESP32 / legacy payloads.
+   * Expected HiveMQ payload:
+   *   {"device_id":"BG-NODE-01","weight":14.55,"height":82.1}
+   */
   private normalizePayload(raw: Record<string, unknown>): MQTTMeasurement | null {
     const height = Number(raw.tinggi ?? raw.height_cm ?? raw.height ?? 0);
     const weight = Number(raw.berat ?? raw.weight_kg ?? raw.weight ?? 0);
-    if (!height || Number.isNaN(height)) return null;
+    if (!height || Number.isNaN(height) || height <= 0) return null;
 
     return {
-      weight_kg: Number.isNaN(weight) ? 0 : weight,
+      weight_kg: Number.isNaN(weight) || weight < 0 ? 0 : weight,
       height_cm: height,
       timestamp: new Date().toISOString(),
       deviceId: String(raw.deviceId ?? raw.device_id ?? 'ESP32_VL53L0X'),
@@ -114,44 +159,114 @@ class MQTTService {
   private handleMessage(message: Message): void {
     try {
       const payload = message.payloadString;
+      if (!payload || typeof payload !== 'string') return;
+
       const data = JSON.parse(payload) as Record<string, unknown>;
       const measurement = this.normalizePayload(data);
-      if (!measurement) return;
+      if (!measurement) {
+        logger.debug('[MQTT] ignore payload — missing/invalid height');
+        return;
+      }
 
       this.latestMeasurement = measurement;
-      // Downstream: MeasurementSyncService.subscribeMeasurements → syncToSupabase
       this.emit('measurement', measurement);
-      console.log('[MQTT] measurement', measurement.height_cm, 'cm');
+      logger.debug(
+        '[MQTT] measurement',
+        measurement.height_cm,
+        'cm /',
+        measurement.weight_kg,
+        'kg'
+      );
     } catch (error) {
-      console.error('[MQTT] parse error', error);
-      this.emit('error', error);
+      // Corrupt JSON must never crash the app — silent log only
+      logger.debug('[MQTT] parse error (ignored)', error);
     }
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /** Silent background reconnect with exponential backoff + circuit breaker */
+  private scheduleSilentReconnect(): void {
+    if (this.intentionalDisconnect) return;
+    if (this.connected || this.connecting) return;
+
+    const now = Date.now();
+    if (now < this.circuitOpenUntil) {
+      const wait = this.circuitOpenUntil - now;
+      this.clearReconnectTimer();
+      this.reconnectTimer = setTimeout(() => {
+        this.scheduleSilentReconnect();
+      }, wait);
+      return;
+    }
+
+    this.clearReconnectTimer();
+    this.emit('reconnecting', { attempt: this.reconnectAttempts + 1 });
+
+    const delay = Math.min(
+      RECONNECT_MAX_MS,
+      RECONNECT_BASE_MS * Math.pow(2, this.reconnectAttempts)
+    );
+    this.reconnectAttempts += 1;
+
+    if (this.reconnectAttempts >= CIRCUIT_FAILURE_THRESHOLD) {
+      this.circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+      this.reconnectAttempts = 0;
+      logger.debug(
+        '[MQTT] circuit open — cool down',
+        CIRCUIT_COOLDOWN_MS / 1000,
+        's'
+      );
+    }
+
+    this.reconnectTimer = setTimeout(() => {
+      void this.connect().catch(() => {
+        // Failures stay silent for Posyandu flaky networks
+        this.scheduleSilentReconnect();
+      });
+    }, delay);
+
+    logger.debug('[MQTT] silent reconnect in', delay, 'ms');
   }
 
   async connect(brokerUrl?: string, clientId?: string): Promise<void> {
     if (this.connected || this.connecting) return;
 
+    this.intentionalDisconnect = false;
     this.connecting = true;
     this.brokerUrl = brokerUrl || this.brokerUrl;
     const { host, port, path, useSSL } = parseWsUrl(this.brokerUrl);
     const uniqueClientId =
-      clientId || `babygrow_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      clientId ||
+      `${MQTT_CLIENT_PREFIX}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
     return new Promise((resolve, reject) => {
       try {
-        this.client = new Client(host, port, path, uniqueClientId);
+        try {
+          this.client?.disconnect();
+        } catch {
+          // ignore
+        }
+
+        this.client = new Client(host, Number(port), path, uniqueClientId);
 
         this.client.onConnectionLost = (response) => {
           this.connected = false;
           this.connecting = false;
-          console.warn('[MQTT] connection lost', response?.errorMessage);
+          logger.debug('[MQTT] connection lost', response?.errorMessage);
           this.emit('disconnected', response);
           this.emit('offline');
+          this.scheduleSilentReconnect();
         };
 
         this.client.onMessageArrived = (message) => this.handleMessage(message);
 
-        this.client.connect({
+        const connectOptions: Record<string, unknown> = {
           useSSL,
           timeout: 10,
           keepAliveInterval: 30,
@@ -160,23 +275,42 @@ class MQTTService {
           onSuccess: () => {
             this.connected = true;
             this.connecting = false;
-            console.log('[MQTT] connected', this.brokerUrl);
-            this.emit('connected', { broker: this.brokerUrl, clientId: uniqueClientId });
+            this.reconnectAttempts = 0;
+            this.circuitOpenUntil = 0;
+            this.clearReconnectTimer();
+            logger.debug(
+              '[MQTT] connected',
+              this.brokerUrl,
+              MQTT_USERNAME ? '(auth)' : '(anonymous)'
+            );
+            this.emit('connected', {
+              broker: this.brokerUrl,
+              clientId: uniqueClientId,
+              authenticated: !!MQTT_USERNAME,
+            });
             this.subscribe(this.topic);
             resolve();
           },
-          onFailure: (err) => {
+          onFailure: (err: { errorMessage?: string }) => {
             this.connected = false;
             this.connecting = false;
-            console.error('[MQTT] connect failed', err?.errorMessage);
+            logger.debug('[MQTT] connect failed', err?.errorMessage);
             this.emit('error', err);
-            // Soft-fail: allow UI to continue; caller may use mock trigger
+            this.scheduleSilentReconnect();
             reject(new Error(err?.errorMessage || 'MQTT connection failed'));
           },
-        });
+        };
+
+        if (MQTT_USERNAME) {
+          connectOptions.userName = MQTT_USERNAME;
+          connectOptions.password = MQTT_PASSWORD;
+        }
+
+        this.client.connect(connectOptions as Parameters<Client['connect']>[0]);
       } catch (error) {
         this.connecting = false;
         this.emit('error', error);
+        this.scheduleSilentReconnect();
         reject(error);
       }
     });
@@ -184,14 +318,14 @@ class MQTTService {
 
   subscribe(topic: string): void {
     if (!this.client || !this.connected) {
-      console.warn('[MQTT] subscribe skipped — not connected');
+      logger.debug('[MQTT] subscribe skipped — not connected');
       return;
     }
     if (this.subscriptions.has(topic)) return;
 
     this.client.subscribe(topic, { qos: 1 });
     this.subscriptions.add(topic);
-    console.log('[MQTT] subscribed', topic);
+    logger.debug('[MQTT] subscribed', topic);
   }
 
   unsubscribe(topic: string): void {
@@ -200,7 +334,11 @@ class MQTTService {
     this.subscriptions.delete(topic);
   }
 
-  publishCommand(deviceId: string, command: string, params?: Record<string, unknown>): void {
+  publishCommand(
+    deviceId: string,
+    command: string,
+    params?: Record<string, unknown>
+  ): void {
     if (!this.client || !this.connected) return;
 
     const topic = `babygrow/device/${deviceId}/command`;
@@ -216,8 +354,12 @@ class MQTTService {
     this.client.send(message);
   }
 
-  /** Dev/demo helper when hardware is offline */
+  /** Dev/demo helper — disabled in production builds */
   triggerMockMeasurement(): void {
+    if (!__DEV__) {
+      console.warn('[MQTT] triggerMockMeasurement disabled in production');
+      return;
+    }
     const height = 78.5 + (Math.random() * 4 - 2);
     const weight = 9.5 + Math.random() * 1.5;
     const mockData: MQTTMeasurement = {
@@ -234,8 +376,12 @@ class MQTTService {
     this.emit('measurement', mockData);
   }
 
-  /** Soft-connect for demo when broker unreachable */
+  /** Soft-connect for demo — disabled in production */
   markSimulatedConnected(): void {
+    if (!__DEV__) {
+      console.warn('[MQTT] markSimulatedConnected disabled in production');
+      return;
+    }
     this.connected = true;
     this.emit('connected', { broker: this.brokerUrl, simulated: true });
     this.subscriptions.add(this.topic);
@@ -246,6 +392,8 @@ class MQTTService {
   }
 
   disconnect(): void {
+    this.intentionalDisconnect = true;
+    this.clearReconnectTimer();
     try {
       this.client?.disconnect();
     } catch {
@@ -253,12 +401,17 @@ class MQTTService {
     }
     this.client = null;
     this.connected = false;
+    this.connecting = false;
     this.subscriptions.clear();
     this.emit('disconnected');
   }
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  isConnecting(): boolean {
+    return this.connecting;
   }
 
   getStatus(): MQTTConnectionStatus {

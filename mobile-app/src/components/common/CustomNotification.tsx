@@ -13,6 +13,7 @@ import {
   Dimensions,
   StyleSheet,
 } from 'react-native';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -76,13 +77,13 @@ export const CustomNotification: React.FC<NotificationProps> = ({
   const getIconAndColor = () => {
     switch (type) {
       case 'success':
-        return { icon: '✅', color: '#4CAF50', bgColor: '#E8F5E8' };
+        return { icon: '✅', color: colors.status.success, bgColor: colors.tertiary.fixed };
       case 'error':
-        return { icon: '❌', color: '#F44336', bgColor: '#FFF5F5' };
+        return { icon: '❌', color: colors.status.error, bgColor: colors.status.errorContainer };
       case 'warning':
-        return { icon: '⚠️', color: '#FF9800', bgColor: '#FFF8E1' };
+        return { icon: '⚠️', color: colors.status.warning, bgColor: colors.primary.fixed };
       default:
-        return { icon: '💗', color: '#FF69B4', bgColor: '#FFE4F6' };
+        return { icon: '💗', color: colors.primary.main, bgColor: colors.primary.fixed };
     }
   };
 
@@ -134,7 +135,7 @@ export const CustomNotification: React.FC<NotificationProps> = ({
 
             {/* Content */}
             <View style={styles.content}>
-              <Text style={[styles.message, { color: isDark ? '#fff' : '#333' }]}>
+              <Text style={[styles.message, { color: isDark ? colors.text.inverse : colors.text.primary }]}>
                 {message}
               </Text>
             </View>
@@ -171,80 +172,72 @@ export const CustomNotification: React.FC<NotificationProps> = ({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.effects.shadowMedium,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.lg,
   },
   container: {
     width: Math.min(width - 40, 350),
-    borderRadius: 20,
-    backgroundColor: '#fff',
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.surface.lowest,
     overflow: 'hidden',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
+    ...shadows.medium,
   },
   modalContent: {
     flex: 1,
   },
   header: {
-    padding: 20,
+    padding: spacing.lg,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: colors.effects.shadowLight,
   },
   icon: {
-    fontSize: 32,
-    marginBottom: 8,
+    fontSize: typography.fontSize.xxxl,
+    marginBottom: spacing.sm,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: typography.fontSize.lg,
+    fontWeight: typography.fontWeight.bold,
     textAlign: 'center',
   },
   content: {
-    padding: 20,
+    padding: spacing.lg,
   },
   message: {
-    fontSize: 16,
+    ...typography.styles.bodyMd,
     textAlign: 'center',
-    lineHeight: 24,
   },
   actions: {
     flexDirection: 'row',
-    padding: 15,
+    padding: spacing.element,
     gap: 10,
   },
   button: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    paddingVertical: spacing.element,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
   },
   confirmButton: {
-    backgroundColor: '#FF69B4',
+    backgroundColor: colors.primary.main,
   },
   confirmButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.text.inverse,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semiBold,
   },
   cancelButton: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: '#E0E0E0',
+    borderColor: colors.neutral.gray300,
   },
   cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '500',
+    color: colors.text.secondary,
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.medium,
   },
 });
 

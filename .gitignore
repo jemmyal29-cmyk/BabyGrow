@@ -19,3 +19,8 @@ yarn-debug.log*
 .env
 .env.local
 mobile-app/.env
+firmware/**/secrets.h
+
+# Generated native projects (CNG / prebuild)
+mobile-app/android/
+mobile-app/ios/

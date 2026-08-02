@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
-import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import {colors, typography, spacing, borderRadius, shadows} from '../theme';
 import { useChildMeasurements } from '../hooks/useMeasurements';
 import { Button, Card, ScreenHeader } from '../components/common';
 import HapticService from '../services/HapticService';
@@ -54,8 +54,8 @@ export default function GrowthChartScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScreenHeader
-        title="Grafik Pertumbuhan"
-        subtitle="Data pengukuran Supabase"
+        title="Growth Trends"
+        subtitle="Riwayat pengukuran anak"
         onBack={() => navigation.goBack()}
       />
 
@@ -107,7 +107,7 @@ export default function GrowthChartScreen({ navigation, route }: any) {
           <Card padding="medium">
             {measurements.length === 0 ? (
               <Text style={styles.emptyDesc}>
-                Belum ada data pengukuran di Supabase untuk anak ini.
+                Belum ada data pengukuran untuk anak ini.
               </Text>
             ) : (
               <LineChart
@@ -119,7 +119,7 @@ export default function GrowthChartScreen({ navigation, route }: any) {
                   backgroundGradientFrom: colors.surface.lowest,
                   backgroundGradientTo: colors.primary.fixed,
                   decimalPlaces: 1,
-                  color: (opacity = 1) => `rgba(182, 0, 89, ${opacity})`,
+                  color: (opacity = 1) => colors.primary.main,
                   labelColor: () => colors.text.secondary,
                   propsForDots: {
                     r: '5',
@@ -132,7 +132,7 @@ export default function GrowthChartScreen({ navigation, route }: any) {
               />
             )}
             <Text style={styles.caption}>
-              {measurements.length} pengukuran · sumber MQTT / manual
+              {measurements.length} pengukuran · manual / alat / AI
             </Text>
           </Card>
         ) : null}
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.containerPadding,
-    paddingBottom: spacing.section,
+    paddingBottom: 90,
     gap: spacing.stackGap,
   },
   metricRow: {
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   metricText: {
     ...typography.styles.buttonText,
     color: colors.primary.main,
-    fontSize: 14,
+    fontSize: typography.fontSize.sm,
   },
   metricTextActive: {
     color: colors.primary.onPrimary,

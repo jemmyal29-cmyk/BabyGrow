@@ -10,6 +10,15 @@
  * - Characteristics: Height, Weight, Battery
  * - Real-time sensor data streaming
  * - Compatible dengan BabyGrow mobile app
+ *
+ * MQTT (jika ESP juga publish ke broker — samakan dengan mobile-app/.env):
+ *   WS/TCP broker : EXPO_PUBLIC_MQTT_WS_URL
+ *   topic         : EXPO_PUBLIC_MQTT_TOPIC   (default babygrow/data/sensor)
+ *   username      : EXPO_PUBLIC_MQTT_USERNAME
+ *   password      : EXPO_PUBLIC_MQTT_PASSWORD
+ *   clientId      : EXPO_PUBLIC_MQTT_CLIENT_PREFIX + "_" + chipId
+ * Payload JSON contoh:
+ *   {"tinggi":78.5,"berat":10.2,"deviceId":"ESP32_xxxx","battery":90}
  * 
  * Upload Settings:
  * - Board: ESP32 Dev Module

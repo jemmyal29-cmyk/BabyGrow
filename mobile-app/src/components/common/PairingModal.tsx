@@ -18,6 +18,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import BLEService from '../../services/BLEService';
 import HapticService from '../../services/HapticService';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -84,7 +85,7 @@ const PairingModal: React.FC<PairingModalProps> = ({
       successScale.setValue(0);
       setStatus('scanning');
       setDeviceInfo(null);
-      setMessage('Mencari BabyGrow_Alat...');
+      setMessage('Mencari alat BabyGrow…');
     }
   }, [visible]);
 
@@ -94,7 +95,7 @@ const PairingModal: React.FC<PairingModalProps> = ({
       
       // Step 1: Scan for devices
       setStatus('scanning');
-      setMessage('Mencari perangkat Bluetooth...');
+      setMessage('Mencari alat BabyGrow di sekitar Anda…');
       HapticService.light();
 
       const devices = await bleService.scanForDevices(10);
@@ -103,18 +104,20 @@ const PairingModal: React.FC<PairingModalProps> = ({
       const babyGrowDevice = devices.find(d => d.name === 'BabyGrow_Alat');
       
       if (!babyGrowDevice) {
-        throw new Error('BabyGrow_Alat tidak ditemukan.\n\nPastikan:\n• ESP32 sudah dinyalakan\n• Bluetooth di HP aktif\n• ESP32 dalam mode pairing (LED berkedip)\n• Jarak < 10 meter\n• ESP32 memancarkan nama "BabyGrow_Alat"');
+        throw new Error(
+          'Alat belum ditemukan.\n\nCoba lagi setelah:\n• Alat sudah dinyalakan\n• Bluetooth HP aktif\n• HP dan alat berdekatan (beberapa meter)\n• Tidak sedang dipakai HP lain'
+        );
       }
 
       // Step 2: Connect to device
       setStatus('connecting');
-      setMessage('Menghubungkan ke BabyGrow_Alat...');
+      setMessage('Menghubungkan ke alat…');
       HapticService.light();
 
       bleService.on('connected', (info: any) => {
         HapticService.success();
         setStatus('success');
-        setMessage('Terhubung! ✅');
+        setMessage('Berhasil terhubung!');
         
         const deviceDetails = {
           type: 'BLE',
@@ -185,7 +188,7 @@ const PairingModal: React.FC<PairingModalProps> = ({
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 105, 180, 0.95)', 'rgba(155, 89, 182, 0.90)']}
+            colors={[colors.primary.container, colors.primary.main]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.modalContent}
@@ -201,7 +204,7 @@ const PairingModal: React.FC<PairingModalProps> = ({
                 <View style={styles.scanningCircle}>
                   <Text style={styles.scanningIcon}>🔍</Text>
                 </View>
-                <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: 16 }} />
+                <ActivityIndicator size="large" color={colors.neutral.white} style={{ marginTop: spacing.md }} />
                 <Text style={styles.titleWhite}>Mencari Perangkat</Text>
                 <Text style={styles.subtitleWhite}>Sedang scan BabyGrow_Alat...</Text>
                 <View style={styles.infoBoxGlass}>
@@ -223,7 +226,7 @@ const PairingModal: React.FC<PairingModalProps> = ({
                 <View style={styles.connectingCircle}>
                   <Text style={styles.connectingIcon}>🔗</Text>
                 </View>
-                <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: 16 }} />
+                <ActivityIndicator size="large" color={colors.neutral.white} style={{ marginTop: spacing.md }} />
                 <Text style={styles.titleWhite}>Menghubungkan</Text>
                 <Text style={styles.subtitleWhite}>{message}</Text>
                 <View style={styles.infoBoxGlass}>
@@ -274,7 +277,7 @@ const PairingModal: React.FC<PairingModalProps> = ({
                 
                 <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
                   <LinearGradient
-                    colors={['#4CAF50', '#66BB6A']}
+                    colors={[colors.tertiary.container, colors.tertiary.main]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.retryButtonGradient}
@@ -300,209 +303,189 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.effects.shadowMedium,
   },
   modalContainer: {
-    width: width - 60,
+    width: width - spacing.section * 1.5,
     maxWidth: 400,
-    borderRadius: 24,
+    borderRadius: borderRadius.xl,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 30,
-    elevation: 20,
+    ...shadows.large,
   },
   modalContent: {
-    padding: 32,
+    padding: spacing.xl,
   },
   contentCenter: {
     alignItems: 'center',
   },
-  // WHITE TEXT VARIANTS (for gradient background)
   titleWhite: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginTop: 16,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.inverse,
+    marginTop: spacing.md,
     textAlign: 'center',
   },
   subtitleWhite: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 8,
+    ...typography.styles.bodyMd,
+    color: colors.primary.onContainer,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
-  // SCANNING STATE
   scanningCircle: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.effects.glassWhite,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
+    borderColor: colors.effects.glassBlur,
   },
   scanningIcon: {
-    fontSize: 64,
+    fontSize: typography.fontSize.huge,
   },
-  // CONNECTING STATE
   connectingCircle: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.effects.glassBlur,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderColor: colors.primary.fixedDim,
   },
   connectingIcon: {
-    fontSize: 64,
+    fontSize: typography.fontSize.huge,
   },
-  // GLASS INFO BOX
   infoBoxGlass: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.effects.glassPink,
+    borderRadius: borderRadius.md,
     width: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: colors.border.glass,
   },
   infoTextWhite: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.text.inverse,
+    marginBottom: spacing.xs,
   },
-  // SUCCESS STATE with GLOW
   successCircleGlow: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: '#4CAF50',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.status.success,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.8,
-    shadowRadius: 30,
-    elevation: 20,
+    shadowColor: colors.status.success,
+    shadowOffset: { width: 0, height: spacing.element },
+    shadowOpacity: 0.5,
+    shadowRadius: spacing.xl,
+    elevation: 12,
   },
   successIcon: {
-    fontSize: 70,
+    fontSize: typography.fontSize.huge,
   },
   successTitleWhite: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginTop: 20,
+    ...typography.styles.headlineLg,
+    color: colors.text.inverse,
+    marginTop: spacing.lg,
     textAlign: 'center',
   },
   successSubtitleWhite: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 8,
+    ...typography.styles.bodyMd,
+    color: colors.primary.onContainer,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
   deviceInfoBoxGlass: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 12,
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.effects.glassWhite,
+    borderRadius: borderRadius.md,
     width: '100%',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderColor: colors.border.glass,
   },
   deviceInfoLabelWhite: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 10,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.bold,
+    color: colors.text.inverse,
+    marginBottom: spacing.sm,
   },
   deviceInfoTextWhite: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.95)',
-    marginBottom: 6,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.primary.onContainer,
+    marginBottom: spacing.xs,
   },
-  // ERROR STATE with GLOW
   errorCircleGlow: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: '#F44336',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.status.error,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#F44336',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: 0.8,
-    shadowRadius: 30,
-    elevation: 20,
+    shadowColor: colors.status.error,
+    shadowOffset: { width: 0, height: spacing.element },
+    shadowOpacity: 0.5,
+    shadowRadius: spacing.xl,
+    elevation: 12,
   },
   errorIcon: {
-    fontSize: 70,
+    fontSize: typography.fontSize.huge,
   },
   errorTitleWhite: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginTop: 20,
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.inverse,
+    marginTop: spacing.lg,
     textAlign: 'center',
   },
   errorSubtitleWhite: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 8,
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.primary.onContainer,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
   errorHintWhite: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 6,
+    fontSize: typography.fontSize.xs,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.primary.fixedDim,
+    marginTop: spacing.xs,
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: typography.lineHeight.labelCaps,
   },
   retryButton: {
-    marginTop: 24,
+    marginTop: spacing.lg,
     width: '100%',
-    borderRadius: 14,
+    borderRadius: borderRadius.full,
     overflow: 'hidden',
-    shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    ...shadows.soft,
   },
   retryButtonGradient: {
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
     alignItems: 'center',
   },
   retryButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...typography.styles.buttonText,
+    color: colors.text.inverse,
   },
   cancelButtonGlass: {
-    marginTop: 14,
+    marginTop: spacing.element,
     width: '100%',
-    paddingVertical: 14,
+    paddingVertical: spacing.element,
     alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.effects.glassPink,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: colors.border.glass,
   },
   cancelButtonTextWhite: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.semiBold,
+    color: colors.text.inverse,
   },
 });
 

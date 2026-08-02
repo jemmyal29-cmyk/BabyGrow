@@ -12,7 +12,7 @@ import Animated, {
   withTiming,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { colors, spacing, typography, borderRadius } from '../../theme';
+import {colors, typography, spacing, borderRadius} from '../../theme';
 import HapticService from '../../services/HapticService';
 import { useSyncStatus } from '../../hooks/useSyncStatus';
 import type { SyncVisualStatus } from '../../store/syncStore';
@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    fontSize: 14,
+    fontSize: typography.fontSize.sm,
     fontWeight: typography.fontWeight.bold,
     lineHeight: 18,
   },
@@ -122,12 +122,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   label: {
-    fontSize: 12,
+    fontSize: typography.fontSize.xs,
     lineHeight: 16,
     fontWeight: typography.fontWeight.semibold,
   },
   queueHint: {
-    fontSize: 10,
+    fontSize: typography.fontSize.xs,
     lineHeight: 12,
     color: colors.text.secondary,
     marginTop: -1,

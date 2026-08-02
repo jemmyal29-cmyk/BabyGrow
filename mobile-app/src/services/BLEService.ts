@@ -77,23 +77,38 @@ class BLEService {
   private connectedDeviceId: string | null = null;
   private listeners: Map<string, Function[]> = new Map();
   private latestMeasurement: BLEMeasurement | null = null;
-  private mockMode: boolean = true; // Auto-detect: true if Expo Go, false if custom build
+  /** Mock BLE only allowed in __DEV__ (e.g. Expo Go). Always false in production. */
+  private mockMode: boolean = false;
 
   private constructor() {
-    // Auto-detect mode: Use mock mode in Expo Go, real BLE in custom builds
+    if (!__DEV__) {
+      this.mockMode = false;
+      if (BleManager) {
+        try {
+          this.manager = new BleManager();
+          console.log('🔷 BLE Service: REAL MODE (production)');
+        } catch (error) {
+          console.warn('⚠️ BLE init failed in production — no mock fallback');
+          this.manager = null;
+        }
+      }
+      return;
+    }
+
+    // __DEV__ only: mock in Expo Go, real BLE in custom build
     const isExpoGo = Constants.appOwnership === 'expo';
-    
+
     if (BleManager && !isExpoGo) {
       try {
         this.manager = new BleManager();
         this.mockMode = false;
         console.log('🔷 BLE Service: REAL MODE (Custom Build)');
       } catch (error) {
-        console.log('⚠️ BLE initialization failed, using MOCK MODE');
+        console.log('⚠️ BLE initialization failed, using MOCK MODE (__DEV__)');
         this.mockMode = true;
       }
     } else {
-      console.log('🔷 BLE Service: MOCK MODE (Expo Go)');
+      console.log('🔷 BLE Service: MOCK MODE (__DEV__ / Expo Go)');
       this.mockMode = true;
     }
   }
@@ -109,22 +124,31 @@ class BLEService {
    * Event system for real-time updates
    */
   on(event: string, callback: (data: any) => void): void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
     }
-    this.listeners[event].push(callback);
+    this.listeners.get(event)!.push(callback);
   }
 
   off(event: string, callback: (data: any) => void): void {
-    if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    }
+    const list = this.listeners.get(event);
+    if (!list) return;
+    this.listeners.set(
+      event,
+      list.filter((cb) => cb !== callback)
+    );
+  }
+
+  /** Subscribe to complete BLE measurements; returns unsubscribe */
+  subscribeMeasurements(callback: (data: BLEMeasurement) => void): () => void {
+    this.on('measurement', callback);
+    return () => this.off('measurement', callback);
   }
 
   private emit(event: string, data: any): void {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    const list = this.listeners.get(event);
+    if (!list) return;
+    list.forEach((callback) => callback(data));
   }
 
   /**
@@ -177,8 +201,13 @@ class BLEService {
     this.isScanning = true;
     this.emit('scanStart', { duration: durationSeconds });
 
-    // MOCK MODE: Return simulated device (untuk testing tanpa hardware)
+    // MOCK MODE — __DEV__ only
     if (this.mockMode) {
+      if (!__DEV__) {
+        this.isScanning = false;
+        this.emit('scanComplete', { devices: [] });
+        return [];
+      }
       return new Promise((resolve) => {
         setTimeout(() => {
           const mockDevices: BLEDevice[] = [
@@ -192,7 +221,7 @@ class BLEService {
           
           this.isScanning = false;
           this.emit('scanComplete', { devices: mockDevices });
-          console.log('✅ BLE Scan complete (Mock): Found BabyGrow_Alat');
+          console.log('✅ BLE Scan complete (Mock __DEV__): Found BabyGrow_Alat');
           resolve(mockDevices);
         }, 2000);
       });
@@ -218,20 +247,23 @@ class BLEService {
     console.log('🔗 Connecting to device:', deviceId);
     this.emit('connecting', { deviceId });
 
-    // MOCK MODE: Simulate connection (untuk testing tanpa hardware)
+    // MOCK MODE — __DEV__ only
     if (this.mockMode) {
+      if (!__DEV__) {
+        throw new Error('BLE mock mode disabled in production');
+      }
       return new Promise((resolve) => {
         setTimeout(() => {
           this.connectedDeviceId = deviceId;
           this.emit('connected', {
             deviceId: deviceId,
-            name: 'BabyGrow_Alat (DEMO)',
+            name: 'BabyGrow_Alat (DEV)',
             status: 'online',
             batteryLevel: 87,
             signalStrength: -45
           });
 
-          console.log('✅ BLE Connected (Mock Mode):', deviceId);
+          console.log('✅ BLE Connected (Mock __DEV__):', deviceId);
           resolve();
         }, 2500);
       });
@@ -308,12 +340,16 @@ class BLEService {
    * Only works when device is connected
    */
   triggerMockMeasurement(): void {
+    if (!__DEV__) {
+      console.warn('[BLE] triggerMockMeasurement disabled in production');
+      return;
+    }
     if (!this.connectedDeviceId) {
       console.warn('⚠️ BLE device not connected. Cannot trigger measurement.');
       return;
     }
 
-    // Generate ONE measurement per trigger
+    // Generate ONE measurement per trigger (__DEV__ only)
     const baseHeight = 78.5;
     const heightVariation = (Math.random() * 4) - 2;
     const height = baseHeight + heightVariation;
@@ -351,14 +387,15 @@ class BLEService {
       throw new Error('No device connected');
     }
 
-    // MOCK MODE
     if (this.mockMode) {
+      if (!__DEV__) {
+        throw new Error('BLE mock mode disabled in production');
+      }
       return 87;
     }
 
-    // REAL BLE MODE: Read from ESP32
-    if (!this.manager || this.mockMode) {
-      return 85; // Default for mock mode
+    if (!this.manager) {
+      throw new Error('BLE manager not available');
     }
 
     try {
@@ -407,6 +444,7 @@ class BLEService {
           // Update latest measurement
           if (this.latestMeasurement) {
             this.latestMeasurement.height_cm = height;
+            this.latestMeasurement.timestamp = new Date().toISOString();
           } else {
             this.latestMeasurement = {
               height_cm: height,
@@ -416,6 +454,9 @@ class BLEService {
               quality: 'good'
             };
           }
+
+          // UI listeners (RealTimeHeightDisplay); DB sync waits for complete packet / manual trigger
+          this.emit('height', height);
         }
       }
     );
@@ -453,8 +494,13 @@ class BLEService {
    * Enable/Disable mock mode
    */
   setMockMode(enabled: boolean) {
+    if (!__DEV__) {
+      console.warn('[BLE] setMockMode ignored in production');
+      this.mockMode = false;
+      return;
+    }
     this.mockMode = enabled;
-    console.log('🔷 BLE Mock Mode:', enabled ? 'ENABLED' : 'DISABLED');
+    console.log('🔷 BLE Mock Mode (__DEV__):', enabled ? 'ENABLED' : 'DISABLED');
   }
 
   // Mock data streaming REMOVED - Use real BLE measurements only
