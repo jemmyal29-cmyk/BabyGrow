@@ -116,17 +116,20 @@ export default function ManualMeasurementScreen({ navigation }: any) {
           z_score_hfa: row.z_score_hfa,
           z_score_wfa: row.z_score_wfa,
         });
+        const pending = !!(row as { pending_sync?: boolean }).pending_sync;
         await HapticService.success();
         Alert.alert(
-          'Pengukuran Tersimpan',
+          pending ? 'Tersimpan Offline' : 'Pengukuran Tersimpan',
           [
             `Anak: ${activeChild.name}`,
             `Tinggi: ${row.height_cm.toFixed(1)} cm`,
             `Berat: ${row.weight_kg != null ? `${Number(row.weight_kg).toFixed(1)} kg` : '—'}`,
-            `Z-Score TB/U: ${row.z_score_hfa != null ? row.z_score_hfa.toFixed(2) : '—'}`,
+            `Z-Score TB/U: ${row.z_score_hfa != null ? Number(row.z_score_hfa).toFixed(2) : '—'}`,
             `Status: ${stunting?.label ?? '—'}`,
             '',
-            'Data pengukuran berhasil disimpan.',
+            pending
+              ? 'Z-score dihitung lokal (WHO LMS). Akan otomatis sync ke cloud saat online.'
+              : 'Data pengukuran berhasil disimpan.',
           ].join('\n'),
           [{ text: 'Kembali', onPress: () => navigation.goBack() }]
         );

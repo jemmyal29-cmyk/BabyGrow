@@ -1,9 +1,9 @@
 /**
  * MeasurementScreen — Live MQTT weight/height from HiveMQ (via useBabyGrowMQTT)
- * Example UI: big live numbers + connection indicator (green/red).
+ * Starts MeasurementSync so E2E persist works even without visiting Beranda first.
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenHeader } from '../components/common';
 import { useBabyGrowMQTT } from '../hooks/useBabyGrowMQTT';
+import MeasurementSyncService from '../services/MeasurementSyncService';
+import { useChildStore } from '../store/childStore';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 interface MeasurementScreenProps {
-  navigation: { goBack: () => void };
+  navigation: { goBack: () => void; navigate: (name: string) => void };
 }
 
 function formatLive(value: number, digits = 1): string {
@@ -26,30 +28,71 @@ function formatLive(value: number, digits = 1): string {
   return value.toFixed(digits);
 }
 
+const MOCK_ENABLED =
+  __DEV__ || process.env.EXPO_PUBLIC_ALLOW_MOCK?.trim() === '1';
+
+/** Human "X detik/menit lalu" from a device last-seen ISO timestamp. */
+function formatLastSeen(iso: string | null, nowMs: number): string {
+  if (!iso) return 'Belum ada data';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return 'Belum ada data';
+  const diffSec = Math.max(0, Math.round((nowMs - t) / 1000));
+  if (diffSec < 2) return 'Baru saja';
+  if (diffSec < 60) return `Terakhir kirim ${diffSec} detik lalu`;
+  const min = Math.floor(diffSec / 60);
+  return `Terakhir kirim ${min} menit lalu`;
+}
+
 export default function MeasurementScreen({ navigation }: MeasurementScreenProps) {
+  const activeChild = useChildStore((s) => s.activeChild);
   const {
     connectionStatus,
     liveWeight,
     liveHeight,
     deviceId,
+    lastUpdatedAt,
     topic,
     isOnline,
     connect,
     triggerMockMeasurement,
   } = useBabyGrowMQTT({ autoConnect: true });
 
-  const statusColor = isOnline
+  // E2E: persist MQTT → Z-score even if user skip Beranda
+  useEffect(() => {
+    MeasurementSyncService.getInstance().start();
+  }, []);
+
+  // Re-render every second so the device "last seen" clock stays fresh.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Broker (HiveMQ WebSocket) — separate from whether the physical device sends data.
+  const brokerColor = isOnline
     ? colors.status.success
     : connectionStatus === 'Connecting'
       ? colors.status.warning
       : colors.status.error;
-
-  const statusLabel =
+  const brokerLabel =
     connectionStatus === 'Connected'
-      ? 'Online'
+      ? 'Broker: Terhubung'
       : connectionStatus === 'Connecting'
-        ? 'Menyambung…'
-        : 'Offline';
+        ? 'Broker: Menyambung…'
+        : 'Broker: Terputus';
+
+  // Device liveness — "fresh" if a measurement arrived within the last 15s.
+  const deviceAgeSec = lastUpdatedAt
+    ? (nowMs - new Date(lastUpdatedAt).getTime()) / 1000
+    : Infinity;
+  const deviceFresh = Number.isFinite(deviceAgeSec) && deviceAgeSec <= 15;
+  const deviceColor = deviceFresh
+    ? colors.status.success
+    : lastUpdatedAt
+      ? colors.status.warning
+      : colors.status.error;
+  const deviceLabel = `Alat: ${formatLastSeen(lastUpdatedAt, nowMs)}`;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -61,18 +104,37 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
       >
         <View style={styles.statusCard}>
           <View style={styles.statusRow}>
-            <View style={[styles.dot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {statusLabel}
+            <View style={[styles.dot, { backgroundColor: brokerColor }]} />
+            <Text style={[styles.statusText, { color: brokerColor }]}>
+              {brokerLabel}
             </Text>
           </View>
-          <Text style={styles.meta}>
-            {connectionStatus} · topic `{topic}`
-          </Text>
+          <View style={styles.statusRow}>
+            <View style={[styles.dot, { backgroundColor: deviceColor }]} />
+            <Text style={[styles.statusText, { color: deviceColor }]}>
+              {deviceLabel}
+            </Text>
+          </View>
+          <Text style={styles.meta}>topic `{topic}`</Text>
           {deviceId ? (
             <Text style={styles.meta}>Perangkat: {deviceId}</Text>
           ) : (
             <Text style={styles.meta}>Menunggu data ESP32…</Text>
+          )}
+          {activeChild ? (
+            <Text style={styles.childLine}>
+              Anak aktif: {activeChild.name} — data stabil akan disimpan otomatis
+            </Text>
+          ) : (
+            <TouchableOpacity
+              style={styles.warnBox}
+              onPress={() => navigation.navigate('Children')}
+            >
+              <Text style={styles.warnText}>
+                Belum ada anak aktif. Ketuk untuk pilih anak — tanpa ini angka
+                live tampil tapi tidak tersimpan ke grafik/AI.
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
 
@@ -91,8 +153,8 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
         </View>
 
         <Text style={styles.hint}>
-          Data masuk otomatis dari HiveMQ WebSocket. Jika sinyal Posyandu putus,
-          aplikasi menyambung ulang di latar tanpa alert.
+          Data masuk otomatis dari HiveMQ WebSocket. Tahan beban/tinggi stabil
+          ~1–2 detik agar firmware + app mengunci sampel lalu simpan.
         </Text>
 
         {!isOnline ? (
@@ -106,12 +168,14 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
           </TouchableOpacity>
         ) : null}
 
-        {__DEV__ ? (
+        {MOCK_ENABLED ? (
           <TouchableOpacity
             style={styles.mockBtn}
             onPress={triggerMockMeasurement}
           >
-            <Text style={styles.mockText}>[DEV] Simulasi pengukuran</Text>
+            <Text style={styles.mockText}>
+              {__DEV__ ? '[DEV] Simulasi pengukuran' : 'Simulasi pengukuran (fallback)'}
+            </Text>
           </TouchableOpacity>
         ) : null}
       </ScrollView>
@@ -156,6 +220,23 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginTop: 2,
   },
+  childLine: {
+    marginTop: spacing.sm,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: typography.fontSize.sm,
+    color: colors.primary.main,
+  },
+  warnBox: {
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.status.errorContainer,
+  },
+  warnText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.onSurface,
+  },
   metricsRow: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -177,18 +258,17 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 56,
-    lineHeight: 64,
-    color: colors.primary.main,
+    fontSize: typography.fontSize.xxxl,
+    color: colors.text.onSurface,
   },
   metricUnit: {
-    marginTop: spacing.xs,
     fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.md,
-    color: colors.text.tertiary,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
   },
   hint: {
-    fontFamily: typography.fontFamily.medium,
+    fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.sm,
     color: colors.text.secondary,
     lineHeight: 20,
@@ -199,21 +279,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
     backgroundColor: colors.primary.main,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.full,
     paddingVertical: spacing.md,
   },
   retryText: {
     fontFamily: typography.fontFamily.semiBold,
-    fontSize: typography.fontSize.md,
     color: colors.text.inverse,
   },
   mockBtn: {
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border.divider,
   },
   mockText: {
     fontFamily: typography.fontFamily.medium,
-    fontSize: typography.fontSize.sm,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
   },
 });

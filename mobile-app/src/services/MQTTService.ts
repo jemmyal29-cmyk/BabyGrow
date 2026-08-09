@@ -34,6 +34,13 @@ const MQTT_PASSWORD = process.env.EXPO_PUBLIC_MQTT_PASSWORD?.trim() || '';
 const MQTT_CLIENT_PREFIX =
   process.env.EXPO_PUBLIC_MQTT_CLIENT_PREFIX?.trim() || 'babygrow';
 
+/**
+ * Allow mock/simulated helpers outside dev builds (e.g. a production demo APK)
+ * so a hardware failure on stage still has a software fallback.
+ */
+const MOCK_ENABLED =
+  __DEV__ || process.env.EXPO_PUBLIC_ALLOW_MOCK?.trim() === '1';
+
 /** After this many failures, cool down before retrying */
 const CIRCUIT_FAILURE_THRESHOLD = 6;
 const CIRCUIT_COOLDOWN_MS = 60_000;
@@ -354,10 +361,15 @@ class MQTTService {
     this.client.send(message);
   }
 
-  /** Dev/demo helper — disabled in production builds */
+  /**
+   * Dev/demo helper. Enabled when __DEV__ OR EXPO_PUBLIC_ALLOW_MOCK === '1'
+   * so a production APK still has a software safety net if hardware fails live.
+   */
   triggerMockMeasurement(): void {
-    if (!__DEV__) {
-      console.warn('[MQTT] triggerMockMeasurement disabled in production');
+    if (!MOCK_ENABLED) {
+      console.warn(
+        '[MQTT] triggerMockMeasurement disabled — set EXPO_PUBLIC_ALLOW_MOCK=1 to enable'
+      );
       return;
     }
     const height = 78.5 + (Math.random() * 4 - 2);
@@ -376,10 +388,12 @@ class MQTTService {
     this.emit('measurement', mockData);
   }
 
-  /** Soft-connect for demo — disabled in production */
+  /** Soft-connect for demo. Enabled when __DEV__ OR EXPO_PUBLIC_ALLOW_MOCK === '1'. */
   markSimulatedConnected(): void {
-    if (!__DEV__) {
-      console.warn('[MQTT] markSimulatedConnected disabled in production');
+    if (!MOCK_ENABLED) {
+      console.warn(
+        '[MQTT] markSimulatedConnected disabled — set EXPO_PUBLIC_ALLOW_MOCK=1 to enable'
+      );
       return;
     }
     this.connected = true;

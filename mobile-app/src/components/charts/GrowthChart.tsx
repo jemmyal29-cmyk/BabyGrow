@@ -1,12 +1,12 @@
 /**
  * BabyGrow Growth Chart Component
- * Displays child's growth trajectory with WHO standards
+ * Displays child's growth trajectory — never feeds NaN into LineChart
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import {colors, typography, spacing, borderRadius} from '../../theme';
+import { colors, typography, spacing, borderRadius } from '../../theme';
 import { GrowthDataPoint } from '../../types/models';
 
 const screenWidth = Dimensions.get('window').width;
@@ -17,34 +17,63 @@ export interface GrowthChartProps {
   showWHOStandards?: boolean;
 }
 
+function finiteNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export const GrowthChart: React.FC<GrowthChartProps> = ({
   data,
   metric,
   showWHOStandards = true,
 }) => {
-  // Prepare chart data
-  const labels = data.map(point => {
-    const months = point.ageMonths;
-    if (months < 12) return `${months}m`;
-    const years = Math.floor(months / 12);
-    const remainingMonths = months % 12;
-    return remainingMonths > 0 ? `${years}y${remainingMonths}m` : `${years}y`;
-  });
+  const chartData = useMemo(() => {
+    const points: { label: string; y: number }[] = [];
 
-  const values = data.map(point => 
-    metric === 'weight' ? point.weight || 0 : point.height || 0
-  );
+    for (const point of data) {
+      const age = finiteNumber(point.ageMonths);
+      const y =
+        metric === 'weight'
+          ? finiteNumber(point.weight)
+          : finiteNumber(point.height);
+      if (age == null || y == null) continue;
 
-  const chartData = {
-    labels: labels.length > 6 ? labels.filter((_, i) => i % 2 === 0) : labels,
-    datasets: [
-      {
-        data: values,
-        color: (opacity = 1) => colors.primary.main,
-        strokeWidth: 3,
-      },
-    ],
-  };
+      const months = Math.max(0, Math.round(age));
+      let label: string;
+      if (months < 12) label = `${months}m`;
+      else {
+        const years = Math.floor(months / 12);
+        const rem = months % 12;
+        label = rem > 0 ? `${years}y${rem}m` : `${years}y`;
+      }
+      points.push({ label, y });
+    }
+
+    if (points.length === 0) return null;
+
+    // Keep labels aligned with data (do not subsample labels alone)
+    const maxPoints = 8;
+    const slice =
+      points.length > maxPoints
+        ? points.filter(
+            (_, i) =>
+              i === 0 ||
+              i === points.length - 1 ||
+              i % Math.ceil(points.length / maxPoints) === 0
+          )
+        : points;
+
+    return {
+      labels: slice.map((p) => p.label),
+      datasets: [
+        {
+          data: slice.map((p) => p.y),
+          color: (opacity = 1) => colors.primary.main,
+          strokeWidth: 3,
+        },
+      ],
+    };
+  }, [data, metric]);
 
   const chartConfig = {
     backgroundColor: colors.background.paper,
@@ -67,12 +96,25 @@ export const GrowthChart: React.FC<GrowthChartProps> = ({
     },
   };
 
+  if (!chartData) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>
+          {metric === 'weight' ? 'Grafik Berat Badan' : 'Grafik Tinggi Badan'}
+        </Text>
+        <Text style={styles.fallback}>
+          Grafik belum tersedia. Menunggu sinkronisasi data pertama.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>
         {metric === 'weight' ? 'Grafik Berat Badan' : 'Grafik Tinggi Badan'}
       </Text>
-      
+
       <Text style={styles.subtitle}>
         {metric === 'weight' ? 'Kilogram (kg)' : 'Sentimeter (cm)'}
       </Text>
@@ -117,6 +159,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     color: colors.text.secondary,
     marginBottom: spacing.md,
+  },
+  fallback: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    paddingVertical: spacing.lg,
   },
   chart: {
     marginVertical: spacing.sm,

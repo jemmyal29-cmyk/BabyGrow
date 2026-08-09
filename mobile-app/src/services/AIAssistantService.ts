@@ -633,9 +633,13 @@ export class AIAssistantService {
         break;
 
       case 'growth_analysis':
-        if (context?.child && context?.measurements) {
+        if (context?.child && context.measurements && context.measurements.length > 0) {
           const analysis = this.analyzeGrowth(context.child, context.measurements);
-          response = this.formatAnalysisResponse(analysis, context.child);
+          const pending = context.measurements.some((m) => m.notes === 'pending_sync');
+          const body = this.formatAnalysisResponse(analysis, context.child);
+          response = pending
+            ? `${body}\n\n_Catatan: sebagian data masih di antrian offline (belum sync cloud)._`
+            : body;
         } else {
           response = this.getDataMissingResponse();
         }

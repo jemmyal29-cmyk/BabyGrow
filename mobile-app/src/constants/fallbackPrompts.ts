@@ -27,7 +27,9 @@ export const FALLBACK_GREETING: Record<FallbackLang, string> = {
 export const FALLBACK_DATA_MISSING =
   '**Data belum lengkap**\n\n' +
   'Untuk analisis pertumbuhan dibutuhkan profil anak dan minimal satu pengukuran.\n\n' +
-  'Tambah anak di menu Anak, lalu simpan pengukuran (manual / alat / kamera AI).';
+  '1. Pilih anak aktif di Beranda / menu Anak\n' +
+  '2. Simpan pengukuran (manual / alat / kamera AI)\n' +
+  '3. Pengukuran offline juga dihitung — AI bisa membacanya meski belum sync cloud';
 
 export const FALLBACK_NUTRITION =
   '**Panduan nutrisi singkat**\n\n' +

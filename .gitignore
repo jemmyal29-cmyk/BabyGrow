@@ -24,3 +24,6 @@ firmware/**/secrets.h
 # Generated native projects (CNG / prebuild)
 mobile-app/android/
 mobile-app/ios/
+
+# Temp PDF build artifacts (regenerate via docs/.pdfbuild/md2pdf.py)
+docs/.pdfbuild/

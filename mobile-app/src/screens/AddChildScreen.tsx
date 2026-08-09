@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useForm, Controller, type FieldErrors } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { Button, Input, Card, ScreenHeader } from '../components/common';
@@ -35,6 +35,10 @@ import {
   parseOptionalNumber,
   saveParentalMetrics,
 } from '../utils/parentalMetricsStorage';
+import { logger } from '../utils/logger';
+import { showAlert } from '../utils/alert';
+
+const SAVE_TIMEOUT_MS = 25000;
 
 interface AddChildScreenProps {
   navigation: any;
@@ -63,23 +67,30 @@ export default function AddChildScreen({ navigation }: AddChildScreenProps) {
   const [motherBlood, setMotherBlood] = useState<BloodTypeInput>('');
   const [fatherBlood, setFatherBlood] = useState<BloodTypeInput>('');
   const [childBlood, setChildBlood] = useState<BloodTypeInput>('');
+  /** Feedback di atas tombol — selalu keliatan (Alert di web sering mati) */
+  const [feedback, setFeedback] = useState<{
+    kind: 'info' | 'error' | 'success';
+    text: string;
+  } | null>(null);
+  const [savingLocal, setSavingLocal] = useState(false);
 
   const {
     control,
-    handleSubmit,
     setValue,
+    getValues,
     watch,
-    formState: { errors, isSubmitting },
+    trigger,
+    formState: { errors },
   } = useForm<CreateChildFormValues>({
     resolver: zodResolver(createChildSchema),
     defaultValues: {
       name: '',
-      gender: undefined,
       birthDate: '',
       birthWeight: '',
       birthHeight: '',
     },
     mode: 'onSubmit',
+    shouldUnregister: false,
   });
 
   const gender = watch('gender');
@@ -108,49 +119,83 @@ export default function AddChildScreen({ navigation }: AddChildScreenProps) {
     ]
   );
 
-  const onInvalid = useCallback(
-    (formErrors: FieldErrors<CreateChildFormValues>) => {
-      const messages = Object.entries(formErrors)
-        .map(([key, err]) => {
-          const label = FIELD_LABELS[key] ?? key;
-          const msg =
-            err && typeof err === 'object' && 'message' in err
-              ? String(err.message)
-              : 'belum lengkap';
-          return `• ${label}: ${msg}`;
-        })
-        .filter(Boolean);
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
-      showError(
-        'Data belum lengkap',
-        messages.length
-          ? `Periksa isian di bagian atas:\n${messages.join('\n')}`
-          : 'Lengkapi nama, jenis kelamin, dan tanggal lahir (DD/MM/YYYY).'
-      );
-    },
-    [showError]
-  );
+  const handleSave = useCallback(async () => {
+    if (savingLocal || createChild.isPending) return;
 
-  const onSubmit = useCallback(
-    async (values: CreateChildFormValues) => {
+    void HapticService.buttonPress();
+    setFeedback({ kind: 'info', text: 'Memvalidasi data…' });
+
+    // Validasi manual — jangan andalkan handleSubmit (bisa gagal diam-diam)
+    const raw = getValues();
+    const parsed = createChildSchema.safeParse({
+      name: raw.name ?? '',
+      gender: raw.gender,
+      birthDate: raw.birthDate ?? '',
+      birthWeight: raw.birthWeight ?? '',
+      birthHeight: raw.birthHeight ?? '',
+    });
+    await trigger();
+
+    if (!parsed.success) {
+      const messages = parsed.error.issues.map((issue) => {
+        const key = String(issue.path[0] ?? '');
+        const label = FIELD_LABELS[key] ?? key;
+        return `• ${label}: ${issue.message}`;
+      });
+      const body = messages.length
+        ? `Periksa isian:\n${messages.join('\n')}`
+        : 'Lengkapi nama, jenis kelamin, dan tanggal lahir (DD/MM/YYYY).';
+      setFeedback({ kind: 'error', text: body });
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      showError('Data belum lengkap', body);
+      showAlert('Data belum lengkap', body);
+      logger.debug('[AddChild] validation failed', parsed.error.flatten());
+      return;
+    }
+
+    const values = parsed.data;
+    setSavingLocal(true);
+    setFeedback({ kind: 'info', text: 'Menyimpan ke cloud… tunggu sebentar' });
+
+    try {
+      logger.debug('[AddChild] submit', {
+        name: values.name,
+        gender: values.gender,
+        birthDate: values.birthDate,
+      });
+      const payload = mapFormToCreateInput(values);
+      const motherH = parseOptionalNumber(motherHeight);
+      const fatherH = parseOptionalNumber(fatherHeight);
+      const motherW = parseOptionalNumber(motherWeight);
+      const fatherW = parseOptionalNumber(fatherWeight);
+
+      const savePromise = createChild.mutateAsync({
+        ...payload,
+        mother_height_cm: motherH ?? null,
+        father_height_cm: fatherH ?? null,
+        mother_weight_kg: motherW ?? null,
+        father_weight_kg: fatherW ?? null,
+        mother_blood: motherBlood || null,
+        father_blood: fatherBlood || null,
+        child_blood: childBlood || null,
+      });
+
+      const child = await Promise.race([
+        savePromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'Timeout menyimpan (25 detik). Cek koneksi / jalankan fix-save-child-force.sql di Supabase.'
+                )
+              ),
+            SAVE_TIMEOUT_MS
+          )
+        ),
+      ]);
+
       try {
-        await HapticService.buttonPress();
-        const payload = mapFormToCreateInput(values);
-        const motherH = parseOptionalNumber(motherHeight);
-        const fatherH = parseOptionalNumber(fatherHeight);
-        const motherW = parseOptionalNumber(motherWeight);
-        const fatherW = parseOptionalNumber(fatherWeight);
-        const child = await createChild.mutateAsync({
-          ...payload,
-          mother_height_cm: motherH ?? null,
-          father_height_cm: fatherH ?? null,
-          mother_weight_kg: motherW ?? null,
-          father_weight_kg: fatherW ?? null,
-          mother_blood: motherBlood || null,
-          father_blood: fatherBlood || null,
-          child_blood: childBlood || null,
-        });
-        // Cadangan lokal (jika kolom DB belum di-migrate)
         await saveParentalMetrics(child.id, {
           motherHeightCm: motherH,
           fatherHeightCm: fatherH,
@@ -160,40 +205,55 @@ export default function AddChildScreen({ navigation }: AddChildScreenProps) {
           fatherBlood,
           childBlood,
         });
-        await HapticService.success();
-        const extra = insight?.summary ? `\n\n${insight.summary}` : '';
-        showSuccess(
-          'Berhasil',
-          `Data anak "${child.name}" tersimpan.${extra}`,
-          () => navigation.goBack()
-        );
-      } catch (err) {
-        await HapticService.error();
-        const message =
-          err instanceof Error ? err.message : 'Gagal menyimpan data anak';
-        showError('Gagal Menyimpan', message);
+      } catch (metricsErr) {
+        logger.debug('[AddChild] parental metrics skip', metricsErr);
       }
-    },
-    [
-      createChild,
-      navigation,
-      showError,
-      showSuccess,
-      motherHeight,
-      fatherHeight,
-      motherWeight,
-      fatherWeight,
-      motherBlood,
-      fatherBlood,
-      childBlood,
-      insight,
-    ]
-  );
+
+      void HapticService.success();
+      const extra = insight?.summary ? `\n\n${insight.summary}` : '';
+      const okMsg = `Data anak "${child.name}" tersimpan.${extra}`;
+      setFeedback({ kind: 'success', text: okMsg });
+      showSuccess('Berhasil', okMsg, () => navigation.goBack());
+      showAlert('Berhasil', okMsg, [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (err) {
+      void HapticService.error();
+      const message =
+        err instanceof Error ? err.message : 'Gagal menyimpan data anak';
+      logger.debug('[AddChild] save error', message);
+      setFeedback({ kind: 'error', text: message });
+      showError('Gagal Menyimpan', message);
+      showAlert('Gagal Menyimpan', message);
+    } finally {
+      setSavingLocal(false);
+    }
+  }, [
+    savingLocal,
+    createChild,
+    getValues,
+    trigger,
+    navigation,
+    showError,
+    showSuccess,
+    motherHeight,
+    fatherHeight,
+    motherWeight,
+    fatherWeight,
+    motherBlood,
+    fatherBlood,
+    childBlood,
+    insight,
+  ]);
 
   const selectGender = useCallback(
     async (value: 'male' | 'female') => {
       await HapticService.light();
-      setValue('gender', value, { shouldValidate: true });
+      setValue('gender', value, {
+        shouldValidate: true,
+        shouldDirty: true,
+        shouldTouch: true,
+      });
     },
     [setValue]
   );
@@ -228,7 +288,7 @@ export default function AddChildScreen({ navigation }: AddChildScreenProps) {
     </View>
   );
 
-  const saving = createChild.isPending || isSubmitting;
+  const saving = savingLocal || createChild.isPending;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -280,62 +340,68 @@ export default function AddChildScreen({ navigation }: AddChildScreenProps) {
             />
 
             <Text style={styles.label}>Jenis Kelamin *</Text>
-            <View style={styles.genderButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.genderButton,
-                  gender === 'male' && styles.genderButtonActive,
-                ]}
-                onPress={() => selectGender('male')}
-                activeOpacity={0.85}
-              >
-                <MaterialCommunityIcons
-                  name="face-man"
-                  size={22}
-                  color={
-                    gender === 'male'
-                      ? colors.primary.main
-                      : colors.text.secondary
-                  }
-                  style={styles.genderIcon}
-                />
-                <Text
-                  style={[
-                    styles.genderText,
-                    gender === 'male' && styles.genderTextActive,
-                  ]}
-                >
-                  Laki-laki
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.genderButton,
-                  gender === 'female' && styles.genderButtonActive,
-                ]}
-                onPress={() => selectGender('female')}
-                activeOpacity={0.85}
-              >
-                <MaterialCommunityIcons
-                  name="face-woman"
-                  size={22}
-                  color={
-                    gender === 'female'
-                      ? colors.primary.main
-                      : colors.text.secondary
-                  }
-                  style={styles.genderIcon}
-                />
-                <Text
-                  style={[
-                    styles.genderText,
-                    gender === 'female' && styles.genderTextActive,
-                  ]}
-                >
-                  Perempuan
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <Controller
+              control={control}
+              name="gender"
+              render={({ field: { value } }) => (
+                <View style={styles.genderButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.genderButton,
+                      value === 'male' && styles.genderButtonActive,
+                    ]}
+                    onPress={() => selectGender('male')}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons
+                      name="face-man"
+                      size={22}
+                      color={
+                        value === 'male'
+                          ? colors.primary.main
+                          : colors.text.secondary
+                      }
+                      style={styles.genderIcon}
+                    />
+                    <Text
+                      style={[
+                        styles.genderText,
+                        value === 'male' && styles.genderTextActive,
+                      ]}
+                    >
+                      Laki-laki
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.genderButton,
+                      value === 'female' && styles.genderButtonActive,
+                    ]}
+                    onPress={() => selectGender('female')}
+                    activeOpacity={0.85}
+                  >
+                    <MaterialCommunityIcons
+                      name="face-woman"
+                      size={22}
+                      color={
+                        value === 'female'
+                          ? colors.primary.main
+                          : colors.text.secondary
+                      }
+                      style={styles.genderIcon}
+                    />
+                    <Text
+                      style={[
+                        styles.genderText,
+                        value === 'female' && styles.genderTextActive,
+                      ]}
+                    >
+                      Perempuan
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
             {errors.gender?.message ? (
               <Text style={styles.fieldError}>{errors.gender.message}</Text>
             ) : null}
@@ -466,13 +532,22 @@ export default function AddChildScreen({ navigation }: AddChildScreenProps) {
             </Card>
           )}
 
-          {saving ? (
-            <Text style={styles.savingHint}>Menyimpan ke cloud… tunggu sebentar</Text>
+          {feedback ? (
+            <View
+              style={[
+                styles.feedbackBox,
+                feedback.kind === 'error' && styles.feedbackError,
+                feedback.kind === 'success' && styles.feedbackSuccess,
+                feedback.kind === 'info' && styles.feedbackInfo,
+              ]}
+            >
+              <Text style={styles.feedbackText}>{feedback.text}</Text>
+            </View>
           ) : null}
 
           <Button
-            title="Simpan Data Anak"
-            onPress={handleSubmit(onSubmit, onInvalid)}
+            title={saving ? 'Menyimpan…' : 'Simpan Data Anak'}
+            onPress={handleSave}
             loading={saving}
             disabled={saving}
             size="large"
@@ -623,11 +698,24 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: typography.fontSize.sm,
   },
-  savingHint: {
+  feedbackBox: {
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  feedbackInfo: {
+    backgroundColor: colors.primary.fixed,
+  },
+  feedbackError: {
+    backgroundColor: colors.status.errorContainer,
+  },
+  feedbackSuccess: {
+    backgroundColor: colors.tertiary.fixed,
+  },
+  feedbackText: {
     ...typography.styles.bodyMd,
     fontSize: typography.fontSize.sm,
-    color: colors.primary.main,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
+    color: colors.text.onSurface,
+    textAlign: 'left',
   },
 });

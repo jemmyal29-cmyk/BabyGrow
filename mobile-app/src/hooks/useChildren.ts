@@ -11,58 +11,59 @@ import type { ChildRow, Gender } from '../types/database';
 
 export const CHILDREN_QUERY_KEY = ['children'] as const;
 
+/** Tanpa z.preprocess/transform — biar zodResolver RHF tidak gagal diam-diam */
 export const createChildSchema = z.object({
   name: z
-    .string()
+    .string({ required_error: 'Nama anak wajib diisi' })
     .trim()
     .min(2, 'Nama minimal 2 karakter')
     .max(80, 'Nama terlalu panjang'),
   gender: z.enum(['male', 'female'], {
-    errorMap: () => ({ message: 'Jenis kelamin wajib dipilih' }),
+    required_error: 'Jenis kelamin wajib dipilih',
+    invalid_type_error: 'Jenis kelamin wajib dipilih',
   }),
   /** UI format DD/MM/YYYY */
   birthDate: z
-    .string()
+    .string({ required_error: 'Tanggal lahir wajib diisi' })
     .trim()
-    .regex(/^\d{2}\/\d{2}\/\d{4}$/, 'Format tanggal: DD/MM/YYYY (contoh 15/05/2024)')
+    .regex(
+      /^\d{2}\/\d{2}\/\d{4}$/,
+      'Format tanggal: DD/MM/YYYY (contoh 15/05/2024)'
+    )
     .refine((value) => {
       const iso = parseBirthDateToIso(value);
       if (!iso) return false;
-      const d = new Date(iso);
+      const d = new Date(`${iso}T00:00:00`);
       return !Number.isNaN(d.getTime()) && d <= new Date();
     }, 'Tanggal lahir tidak valid'),
-  birthWeight: z.preprocess(
-    (v) => (typeof v === 'string' && !v.trim() ? undefined : v),
-    z
-      .string()
-      .optional()
-      .refine(
-        (v) =>
-          v === undefined ||
-          (!Number.isNaN(Number(String(v).replace(',', '.'))) &&
-            Number(String(v).replace(',', '.')) > 0 &&
-            Number(String(v).replace(',', '.')) < 10),
-        'Berat lahir harus antara 0–10 kg'
-      )
-  ),
-  birthHeight: z.preprocess(
-    (v) => (typeof v === 'string' && !v.trim() ? undefined : v),
-    z
-      .string()
-      .optional()
-      .refine(
-        (v) =>
-          v === undefined ||
-          (!Number.isNaN(Number(String(v).replace(',', '.'))) &&
-            Number(String(v).replace(',', '.')) > 20 &&
-            Number(String(v).replace(',', '.')) < 70),
-        'Tinggi lahir harus antara 20–70 cm'
-      )
-  ),
+  birthWeight: z
+    .string()
+    .optional()
+    .refine(
+      (v) => {
+        const t = (v ?? '').trim();
+        if (!t) return true;
+        const n = Number(t.replace(',', '.'));
+        return Number.isFinite(n) && n > 0 && n < 10;
+      },
+      'Berat lahir harus antara 0–10 kg'
+    ),
+  birthHeight: z
+    .string()
+    .optional()
+    .refine(
+      (v) => {
+        const t = (v ?? '').trim();
+        if (!t) return true;
+        const n = Number(t.replace(',', '.'));
+        return Number.isFinite(n) && n > 20 && n < 70;
+      },
+      'Tinggi lahir harus antara 20–70 cm'
+    ),
 });
 
-export type CreateChildFormValues = z.input<typeof createChildSchema>;
-export type CreateChildFormOutput = z.output<typeof createChildSchema>;
+export type CreateChildFormValues = z.infer<typeof createChildSchema>;
+export type CreateChildFormOutput = CreateChildFormValues;
 
 export interface CreateChildInput {
   name: string;
@@ -128,8 +129,8 @@ export function mapFormToCreateInput(values: CreateChildFormOutput): CreateChild
     name: values.name.trim(),
     gender: values.gender,
     date_of_birth,
-    birth_weight: toNum(values.birthWeight as string | undefined),
-    birth_height: toNum(values.birthHeight as string | undefined),
+    birth_weight: toNum(values.birthWeight),
+    birth_height: toNum(values.birthHeight),
   };
 }
 
@@ -141,15 +142,8 @@ async function resolveParentId(): Promise<string> {
   return userId;
 }
 
-/** Pastikan baris profiles ada (FK parent_id). Gagal diam-diam → tetap lanjut insert. */
+/** Pastikan baris profiles ada (FK parent_id). Pakai upsert agar andal. */
 export async function ensureOwnProfile(userId: string): Promise<void> {
-  const { data: existing } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle();
-  if (existing?.id) return;
-
   const { data: auth } = await supabase.auth.getUser();
   const email = auth.user?.email ?? `${userId}@local`;
   const fullName =
@@ -157,18 +151,23 @@ export async function ensureOwnProfile(userId: string): Promise<void> {
     email.split('@')[0] ||
     'Pengguna';
 
-  // Coba dengan role_app; jika kolom tidak ada, coba minimal
-  const attempts = [
+  const attempts: Record<string, unknown>[] = [
     { id: userId, email, full_name: fullName, role: 'ROLE_USER', role_app: 'ROLE_USER' },
     { id: userId, email, full_name: fullName, role: 'ROLE_USER' },
+    { id: userId, email, full_name: fullName, role_app: 'ROLE_USER' },
     { id: userId, email, full_name: fullName },
   ];
+
   for (const row of attempts) {
-    const { error } = await supabase.from('profiles').insert(row as any);
+    const { error } = await supabase.from('profiles').upsert(row as never, {
+      onConflict: 'id',
+    });
     if (!error) return;
-    if (!/column|schema cache|role_app/i.test(error.message)) {
-      // RLS / lainnya — biarkan insert anak yang menampilkan error FK
-      return;
+    // Kolom tidak ada → coba payload lebih minimal
+    if (!/column|schema cache|role_app|Could not find/i.test(error.message)) {
+      // RLS / lainnya — coba insert biasa
+      const ins = await supabase.from('profiles').insert(row as never);
+      if (!ins.error) return;
     }
   }
 }
@@ -195,7 +194,7 @@ function formatChildSaveError(
   ) {
     return (
       'Akses ditolak oleh keamanan database. ' +
-      'Jalankan supabase/fix-save-child.sql di SQL Editor, lalu coba lagi.\n\n' +
+      'WAJIB: jalankan supabase/fix-save-child-force.sql di SQL Editor Supabase, lalu logout & login.\n\n' +
       raw
     );
   }
@@ -206,19 +205,17 @@ function formatChildSaveError(
   ) {
     return (
       'Profil akun belum ada di database. ' +
-      'Jalankan supabase/fix-save-child.sql, lalu logout & login ulang.\n\n' +
+      'WAJIB: jalankan supabase/fix-save-child-force.sql, lalu logout & login ulang.\n\n' +
       raw
     );
   }
   if (m.includes('jwt') || m.includes('session') || code === 'PGRST301') {
     return 'Sesi habis. Silakan keluar lalu masuk lagi.';
   }
-  // Jangan samarkan semua "could not find" sebagai migrate ortu —
-  // tampilkan pesan asli supaya jelas kolom mana yang bermasalah
   if (code === 'PGRST204' || m.includes('schema cache') || m.includes('could not find')) {
     return (
       'Struktur tabel children di Supabase belum cocok dengan app. ' +
-      'Jalankan supabase/fix-children-align-app.sql lalu tunggu ~30 detik.\n\n' +
+      'WAJIB: jalankan supabase/fix-save-child-force.sql lalu tunggu ~30 detik.\n\n' +
       raw
     );
   }
@@ -411,47 +408,66 @@ export function useCreateChild() {
         const parent_id = await resolveParentId();
         await ensureOwnProfile(parent_id);
 
-        // Dual-write: schema BabyGrow (name/date_of_birth) + schema lama (full_name/birth_date)
-        const dualWrite = {
+        // Urutan: payload paling sederhana dulu (schema BabyGrow resmi),
+        // lalu dual-write alias lama. Jangan berhenti di PGRST204.
+        const base = {
           parent_id,
-          name: input.name,
-          full_name: input.name,
           gender: input.gender,
-          date_of_birth: input.date_of_birth,
-          birth_date: input.date_of_birth,
         };
 
         const payloadVariants: Record<string, unknown>[] = [
-          dualWrite,
           {
-            parent_id,
+            ...base,
             name: input.name,
-            gender: input.gender,
+            date_of_birth: input.date_of_birth,
+            birth_weight: input.birth_weight,
+            birth_height: input.birth_height,
+          },
+          {
+            ...base,
+            name: input.name,
             date_of_birth: input.date_of_birth,
           },
           {
-            parent_id,
+            ...base,
+            name: input.name,
             full_name: input.name,
-            gender: input.gender,
+            date_of_birth: input.date_of_birth,
             birth_date: input.date_of_birth,
           },
           {
-            parent_id,
+            ...base,
             full_name: input.name,
-            gender: input.gender,
+            birth_date: input.date_of_birth,
+          },
+          {
+            ...base,
+            full_name: input.name,
             date_of_birth: input.date_of_birth,
           },
           {
+            ...base,
+            name: input.name,
+            birth_date: input.date_of_birth,
+          },
+          // Enum gender lama (jika DB belum punya male/female)
+          {
             parent_id,
             name: input.name,
-            gender: input.gender,
+            full_name: input.name,
+            gender: input.gender === 'female' ? 'Perempuan' : 'Laki-laki',
+            date_of_birth: input.date_of_birth,
             birth_date: input.date_of_birth,
           },
         ];
 
         let data: ChildRow | null = null;
-        let lastError: { message: string; code?: string; details?: string; hint?: string } | null =
-          null;
+        let lastError: {
+          message: string;
+          code?: string;
+          details?: string;
+          hint?: string;
+        } | null = null;
 
         for (const payload of payloadVariants) {
           const attempt = await supabase
@@ -474,15 +490,16 @@ export function useCreateChild() {
           };
 
           const msg = (attempt.error?.message ?? '').toLowerCase();
+          // Hard stop: RLS / FK — tidak ada gunanya mencoba payload lain
           if (
             msg.includes('row-level security') ||
             msg.includes('foreign key') ||
-            msg.includes('invalid input value for enum') ||
             attempt.error?.code === '23503' ||
             attempt.error?.code === '42501'
           ) {
             break;
           }
+          // Selain itu (kolom/enum) → lanjut varian berikutnya
         }
 
         if (!data) {
@@ -534,7 +551,8 @@ export function useCreateChild() {
 
         return latest;
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Gagal menyimpan data anak';
+        const message =
+          err instanceof Error ? err.message : 'Gagal menyimpan data anak';
         throw new Error(message);
       }
     },
