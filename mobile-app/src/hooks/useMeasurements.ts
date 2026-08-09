@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/SupabaseClient';
 import { queryClient } from '../services/queryClient';
+import MeasurementSyncService from '../services/MeasurementSyncService';
 import { colors } from '../theme';
 import type { Gender, MeasurementRow, StuntingRisk } from '../types/database';
 import {
@@ -18,6 +19,11 @@ import {
 } from '../utils/zScoreCalculator';
 
 export const MEASUREMENTS_QUERY_KEY = ['measurements'] as const;
+
+/** Row yang bisa datang dari cloud ATAU antrian offline */
+export type MeasurementListItem = MeasurementRow & {
+  pending_sync?: boolean;
+};
 
 /** Invalidate measurement queries after MQTT/offline sync insert (non-React) */
 export function invalidateMeasurementQueries(childId?: string | null): void {
@@ -158,7 +164,10 @@ export function useChildMeasurements(childId?: string | null) {
   return useQuery({
     queryKey: [...MEASUREMENTS_QUERY_KEY, childId],
     enabled: !!childId,
-    queryFn: async (): Promise<MeasurementRow[]> => {
+    queryFn: async (): Promise<MeasurementListItem[]> => {
+      const sync = MeasurementSyncService.getInstance();
+      let remote: MeasurementRow[] = [];
+
       try {
         const { data, error } = await supabase
           .from('measurements')
@@ -166,11 +175,33 @@ export function useChildMeasurements(childId?: string | null) {
           .eq('child_id', childId!)
           .order('measured_at', { ascending: true });
         if (error) throw new Error(error.message);
-        return (data ?? []) as MeasurementRow[];
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Gagal memuat pengukuran';
-        throw new Error(message);
+        remote = (data ?? []) as MeasurementRow[];
+      } catch {
+        // Offline / network error — tetap lanjut dengan antrian lokal
+        remote = [];
       }
+
+      const queued = await sync.getQueuedMeasurements(childId);
+      const pending = queued.map((q) => sync.queuedToMeasurementRow(q));
+
+      // Dedup: skip queue item yang sudah ada di cloud (same time + height)
+      const merged: MeasurementListItem[] = [...remote];
+      for (const p of pending) {
+        const dup = remote.some(
+          (r) =>
+            Math.abs(
+              new Date(r.measured_at).getTime() -
+                new Date(p.measured_at).getTime()
+            ) < 2000 && Math.abs(Number(r.height_cm) - Number(p.height_cm)) < 0.05
+        );
+        if (!dup) merged.push(p);
+      }
+
+      merged.sort(
+        (a, b) =>
+          new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime()
+      );
+      return merged;
     },
   });
 }
@@ -188,7 +219,10 @@ export function useLatestMeasurement(childId?: string | null) {
   const query = useQuery({
     queryKey,
     enabled: !!childId,
-    queryFn: async (): Promise<MeasurementRow | null> => {
+    queryFn: async (): Promise<MeasurementListItem | null> => {
+      const sync = MeasurementSyncService.getInstance();
+      let remote: MeasurementRow | null = null;
+
       try {
         const { data, error } = await supabase
           .from('measurements')
@@ -198,11 +232,25 @@ export function useLatestMeasurement(childId?: string | null) {
           .limit(1)
           .maybeSingle();
         if (error) throw new Error(error.message);
-        return (data as MeasurementRow) ?? null;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Gagal memuat pengukuran terbaru';
-        throw new Error(message);
+        remote = (data as MeasurementRow) ?? null;
+      } catch {
+        remote = null;
       }
+
+      const queued = await sync.getQueuedMeasurements(childId);
+      if (queued.length === 0) return remote;
+
+      const latestQueued = [...queued].sort(
+        (a, b) =>
+          new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
+      )[0];
+      const pending = sync.queuedToMeasurementRow(latestQueued);
+
+      if (!remote) return pending;
+      return new Date(pending.measured_at).getTime() >
+        new Date(remote.measured_at).getTime()
+        ? pending
+        : remote;
     },
   });
 

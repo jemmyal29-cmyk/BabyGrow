@@ -14,6 +14,10 @@ import { invalidateMeasurementQueries } from '../hooks/useMeasurements';
 import type { Gender, MeasurementRow, StuntingRisk } from '../types/database';
 import type { MQTTMeasurement } from '../types';
 import {
+  calculateAgeInMonths,
+  calculateHeightForAge,
+  calculateWeightForAge,
+  calculateWeightForHeight,
   computeAllZScores,
   determineStuntingRisk,
   lmsZScore,
@@ -22,9 +26,11 @@ import { logger } from '../utils/logger';
 
 export { lmsZScore };
 
-const WINDOW_SIZE = 5;
-const STABILITY_STD_CM = 0.35;
-const RESET_JUMP_CM = 1.2;
+// Loosened for physical-sensor jitter during live demo (was 5 / 0.35 / 1.2).
+// Tighten again for production-grade medical accuracy once hardware is calibrated.
+const WINDOW_SIZE = 3;
+const STABILITY_STD_CM = 0.8;
+const RESET_JUMP_CM = 3.0;
 const QUEUE_KEY = '@babygrow/measurement_offline_queue';
 const MAX_QUEUE = 100;
 const MAX_ATTEMPTS = 8;
@@ -61,7 +67,8 @@ export interface SyncMeasurementPayload {
   date_of_birth: string;
 }
 
-interface QueuedMeasurement extends SyncMeasurementPayload {
+/** Offline queue item — also exposed for charts / AI before cloud sync */
+export interface QueuedMeasurement extends SyncMeasurementPayload {
   local_id: string;
   height_cm: number;
   weight_kg: number | null;
@@ -73,6 +80,8 @@ interface QueuedMeasurement extends SyncMeasurementPayload {
   attempts: number;
   enqueued_at: string;
 }
+
+export type OfflineQueuedMeasurement = QueuedMeasurement;
 
 function stdDev(values: number[]): number {
   if (values.length < 2) return Number.POSITIVE_INFINITY;
@@ -172,29 +181,120 @@ class MeasurementSyncService {
   }
 
   /**
-   * WHO LMS via zScoreCalculator (Supabase-first + local circuit breaker).
+   * WHO LMS via zScoreCalculator.
+   * Offline → local tables only (no Supabase wait / hang).
+   * Online → Supabase-first with automatic local circuit breaker.
    */
   async computeZScoresFromWhoStandards(input: {
     height_cm: number;
     weight_kg?: number | null;
     gender: Gender;
     date_of_birth: string;
+    measured_at?: string;
   }): Promise<MeasurementZScores> {
-    const scores = await computeAllZScores(
-      { gender: input.gender, date_of_birth: input.date_of_birth },
-      {
-        height_cm: input.height_cm,
-        weight_kg: input.weight_kg,
+    const net = await NetInfo.fetch();
+    const online =
+      net.isConnected === true && net.isInternetReachable !== false;
+
+    // Force local LMS when offline — must yield finite numbers before enqueue
+    if (!online) {
+      return this.computeLocalZScores(input);
+    }
+
+    try {
+      const scores = await computeAllZScores(
+        { gender: input.gender, date_of_birth: input.date_of_birth },
+        {
+          height_cm: input.height_cm,
+          weight_kg: input.weight_kg,
+          measured_at: input.measured_at,
+        }
+      );
+
+      const hfa = Number(scores.z_score_hfa);
+      if (!Number.isFinite(hfa)) {
+        return this.computeLocalZScores(input);
       }
+
+      return {
+        z_score_hfa: hfa,
+        z_score_wfa:
+          scores.z_score_wfa != null && Number.isFinite(scores.z_score_wfa)
+            ? scores.z_score_wfa
+            : null,
+        z_score_wfh:
+          scores.z_score_wfh != null && Number.isFinite(scores.z_score_wfh)
+            ? scores.z_score_wfh
+            : null,
+        stunting_risk: mapStuntingRisk(scores.stunting_risk),
+        age_months: scores.age_months,
+        source: scores.source === 'supabase' ? 'db' : 'local_fallback',
+      };
+    } catch (err) {
+      logger.debug(
+        '[MeasurementSync] computeAllZScores failed → local LMS',
+        err instanceof Error ? err.message : err
+      );
+      return this.computeLocalZScores(input);
+    }
+  }
+
+  /** Sync path: whoLocalFallback only — never null/NaN for HFA */
+  private computeLocalZScores(input: {
+    height_cm: number;
+    weight_kg?: number | null;
+    gender: Gender;
+    date_of_birth: string;
+    measured_at?: string;
+  }): MeasurementZScores {
+    const age_months = calculateAgeInMonths(
+      input.date_of_birth,
+      input.measured_at
     );
+    const hfa = calculateHeightForAge(
+      input.height_cm,
+      age_months,
+      input.gender
+    );
+    if (!Number.isFinite(hfa.zscore)) {
+      throw new Error('Z-score lokal HFA tidak valid');
+    }
+
+    let z_score_wfa: number | null = null;
+    let z_score_wfh: number | null = null;
+    const weight =
+      input.weight_kg != null && input.weight_kg > 0 ? input.weight_kg : null;
+
+    if (weight) {
+      try {
+        z_score_wfa = calculateWeightForAge(
+          weight,
+          age_months,
+          input.gender
+        ).zscore;
+        if (!Number.isFinite(z_score_wfa)) z_score_wfa = null;
+      } catch {
+        z_score_wfa = null;
+      }
+      try {
+        z_score_wfh = calculateWeightForHeight(
+          weight,
+          input.height_cm,
+          input.gender
+        ).zscore;
+        if (!Number.isFinite(z_score_wfh)) z_score_wfh = null;
+      } catch {
+        z_score_wfh = null;
+      }
+    }
 
     return {
-      z_score_hfa: scores.z_score_hfa,
-      z_score_wfa: scores.z_score_wfa,
-      z_score_wfh: scores.z_score_wfh,
-      stunting_risk: mapStuntingRisk(scores.stunting_risk),
-      age_months: scores.age_months,
-      source: scores.source === 'supabase' ? 'db' : 'local_fallback',
+      z_score_hfa: hfa.zscore,
+      z_score_wfa,
+      z_score_wfh,
+      stunting_risk: mapStuntingRisk(determineStuntingRisk(hfa.zscore).level),
+      age_months,
+      source: 'local_fallback',
     };
   }
 
@@ -212,7 +312,17 @@ class MeasurementSyncService {
       weight_kg: input.weight_kg,
       gender: input.gender,
       date_of_birth: input.date_of_birth,
+      measured_at: input.measured_at,
     });
+
+    if (
+      scores.z_score_hfa == null ||
+      !Number.isFinite(Number(scores.z_score_hfa))
+    ) {
+      throw new Error(
+        'Gagal menghitung Z-score (WHO LMS). Cek tanggal lahir & tinggi anak.'
+      );
+    }
 
     const payload: QueuedMeasurement = {
       local_id: `m_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -251,7 +361,8 @@ class MeasurementSyncService {
       if (!online) {
         await this.enqueue(item);
         logger.debug('[MeasurementSync] offline — queued', item.local_id);
-        return null;
+        // Return local row so UI/charts see Z-scores immediately
+        return this.queuedToMeasurementRow(item);
       }
 
       const row = await this.insertMeasurement(item);
@@ -266,11 +377,12 @@ class MeasurementSyncService {
       return row;
     } catch (error) {
       console.error('[MeasurementSync] insert failed — queueing', error);
-      await this.enqueue({
+      const queuedItem = {
         ...item,
         attempts: (item.attempts ?? 0) + 1,
-      });
-      return null;
+      };
+      await this.enqueue(queuedItem);
+      return this.queuedToMeasurementRow(queuedItem);
     }
   }
 
@@ -395,6 +507,37 @@ class MeasurementSyncService {
     return (await this.readQueue()).length;
   }
 
+  /** All queued items (optionally filtered by child) — for charts / AI */
+  async getQueuedMeasurements(
+    childId?: string | null
+  ): Promise<QueuedMeasurement[]> {
+    const queue = await this.readQueue();
+    if (!childId) return queue;
+    return queue.filter((q) => q.child_id === childId);
+  }
+
+  /** Map queue item → MeasurementRow shape for UI merge */
+  queuedToMeasurementRow(item: QueuedMeasurement): MeasurementRow & {
+    pending_sync: true;
+  } {
+    return {
+      id: item.local_id,
+      child_id: item.child_id,
+      height_cm: item.height_cm,
+      weight_kg: item.weight_kg,
+      head_circumference_cm: item.head_circumference_cm ?? null,
+      z_score_hfa: item.z_score_hfa,
+      z_score_wfa: item.z_score_wfa,
+      z_score_wfh: item.z_score_wfh,
+      stunting_risk: item.stunting_risk,
+      source: item.source,
+      device_id: item.device_id ?? null,
+      measured_at: item.measured_at,
+      created_at: item.enqueued_at,
+      pending_sync: true,
+    };
+  }
+
   /** Push current AsyncStorage queue + NetInfo into Zustand for UI */
   async refreshSyncStore(): Promise<void> {
     const queue = await this.readQueue();
@@ -433,6 +576,8 @@ class MeasurementSyncService {
     while (queue.length > MAX_QUEUE) queue.shift();
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
     useSyncStore.getState().setQueueLength(queue.length);
+    // Charts / AI must see pending rows immediately
+    invalidateMeasurementQueries(item.child_id);
   }
 
   private async onBleMeasurement(data: BLEMeasurement): Promise<void> {

@@ -267,7 +267,7 @@ export default function EditChildProfileScreen({ navigation, route }: EditChildP
     <View style={styles.genderContainer}>
       <Text style={styles.sectionTitle}>Jenis Kelamin</Text>
       <View style={styles.genderButtons}>
-        {['Laki-laki', 'Perempuan'].map((option) => {
+        {(['Laki-laki', 'Perempuan'] as const).map((option) => {
           const active = gender === option;
           return (
             <TouchableOpacity

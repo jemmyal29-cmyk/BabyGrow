@@ -44,35 +44,14 @@ export const CustomNotification: React.FC<NotificationProps> = ({
 
   useEffect(() => {
     if (visible) {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 100,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Set langsung dulu biar tidak "invisible" kalau animasi macet (web)
+      slideAnim.setValue(1);
+      scaleAnim.setValue(1);
     } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 0,
-          tension: 100,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      slideAnim.setValue(0);
+      scaleAnim.setValue(0);
     }
-  }, [visible]);
+  }, [visible, slideAnim, scaleAnim]);
 
   const getIconAndColor = () => {
     switch (type) {

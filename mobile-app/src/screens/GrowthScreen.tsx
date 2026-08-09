@@ -90,25 +90,27 @@ export default function GrowthScreen() {
     return series
       .map((m) => {
         const value = metricValue(m, selectedMetric);
-        if (value == null || Number.isNaN(value)) return null;
-        const ageMonths = activeChild
-          ? calculateAgeInMonths(activeChild.date_of_birth)
-          : 0;
-        let monthLabel = ageMonths;
-        if (activeChild?.date_of_birth && m.measured_at) {
-          const dob = new Date(activeChild.date_of_birth);
-          const at = new Date(m.measured_at);
-          monthLabel =
-            (at.getFullYear() - dob.getFullYear()) * 12 +
-            (at.getMonth() - dob.getMonth());
-          if (at.getDate() < dob.getDate()) monthLabel -= 1;
-          if (monthLabel < 0) monthLabel = 0;
+        if (value == null || !Number.isFinite(value)) return null;
+
+        let monthLabel = 0;
+        if (activeChild?.date_of_birth) {
+          try {
+            monthLabel = calculateAgeInMonths(
+              activeChild.date_of_birth,
+              m.measured_at
+            );
+          } catch {
+            monthLabel = 0;
+          }
         }
+        if (!Number.isFinite(monthLabel) || monthLabel < 0) monthLabel = 0;
+
         return {
           id: m.id,
-          month: monthLabel,
+          month: Math.round(monthLabel),
           value,
           normal: isNormalPoint(m),
+          pending: !!m.pending_sync,
         };
       })
       .filter(Boolean) as Array<{
@@ -116,11 +118,15 @@ export default function GrowthScreen() {
       month: number;
       value: number;
       normal: boolean;
+      pending?: boolean;
     }>;
   }, [series, selectedMetric, activeChild]);
 
   const currentMetric = METRICS.find((m) => m.id === selectedMetric)!;
-  const maxVal = Math.max(...chartPoints.map((d) => d.value), 1);
+  const maxVal = Math.max(
+    ...chartPoints.map((d) => d.value).filter((v) => Number.isFinite(v)),
+    1
+  );
 
   const latestDisplay = useMemo(() => {
     if (!latest) return null;
@@ -263,7 +269,9 @@ export default function GrowthScreen() {
             <SkeletonLoader variant="stat" count={1} style={{ padding: 0 }} />
           ) : chartPoints.length === 0 ? (
             <Text style={styles.empty}>
-              Belum ada pengukuran untuk metrik ini.
+              {series.some((m) => m.pending_sync)
+                ? 'Grafik belum tersedia. Menunggu sinkronisasi data pertama.'
+                : 'Belum ada pengukuran untuk metrik ini.'}
             </Text>
           ) : (
             <View style={styles.chartContainer}>

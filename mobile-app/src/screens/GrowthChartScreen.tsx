@@ -1,5 +1,6 @@
 /**
  * Growth Chart Screen — desainuiux.md + Supabase React Query
+ * UI defense: never pass NaN/undefined into LineChart
  */
 
 import React, { useMemo, useState } from 'react';
@@ -14,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
-import {colors, typography, spacing, borderRadius, shadows} from '../theme';
+import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { useChildMeasurements } from '../hooks/useMeasurements';
 import { Button, Card, ScreenHeader } from '../components/common';
 import HapticService from '../services/HapticService';
@@ -23,27 +24,54 @@ const { width } = Dimensions.get('window');
 
 type Metric = 'weight' | 'height' | 'zscore';
 
+function finiteNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function GrowthChartScreen({ navigation, route }: any) {
   const childId: string | undefined = route?.params?.childId;
   const [metric, setMetric] = useState<Metric>('height');
   const { data: measurements = [], isLoading, isError, error, refetch } =
     useChildMeasurements(childId);
 
+  const pendingCount = useMemo(
+    () => measurements.filter((m) => m.pending_sync).length,
+    [measurements]
+  );
+
   const chart = useMemo(() => {
-    if (measurements.length === 0) {
-      return { labels: ['—'], datasets: [{ data: [0] }] };
-    }
-    const slice = measurements.slice(-6);
-    const labels = slice.map((m) => {
+    const points: { label: string; y: number }[] = [];
+
+    for (const m of measurements.slice(-8)) {
+      let y: number | null = null;
+      if (metric === 'weight') y = finiteNumber(m.weight_kg);
+      else if (metric === 'zscore') y = finiteNumber(m.z_score_hfa);
+      else y = finiteNumber(m.height_cm);
+
+      if (y == null) continue;
+
       const d = new Date(m.measured_at);
-      return `${d.getDate()}/${d.getMonth() + 1}`;
-    });
-    const data = slice.map((m) => {
-      if (metric === 'weight') return Number(m.weight_kg ?? 0);
-      if (metric === 'zscore') return Number(m.z_score_hfa ?? 0);
-      return Number(m.height_cm ?? 0);
-    });
-    return { labels, datasets: [{ data: data.length ? data : [0] }] };
+      const label = Number.isNaN(d.getTime())
+        ? '—'
+        : `${d.getDate()}/${d.getMonth() + 1}`;
+      points.push({ label, y });
+    }
+
+    if (points.length === 0) {
+      return null;
+    }
+
+    return {
+      labels: points.map((p) => p.label),
+      datasets: [
+        {
+          data: points.map((p) => p.y),
+          color: (opacity = 1) => colors.primary.main,
+          strokeWidth: 3,
+        },
+      ],
+    };
   }, [measurements, metric]);
 
   const selectMetric = async (key: Metric) => {
@@ -105,10 +133,19 @@ export default function GrowthChartScreen({ navigation, route }: any) {
 
         {childId && !isLoading && !isError ? (
           <Card padding="medium">
-            {measurements.length === 0 ? (
-              <Text style={styles.emptyDesc}>
-                Belum ada data pengukuran untuk anak ini.
-              </Text>
+            {!chart ? (
+              <View>
+                <Text style={styles.emptyTitle}>Grafik belum tersedia</Text>
+                <Text style={styles.emptyDesc}>
+                  {pendingCount > 0
+                    ? 'Menunggu sinkronisasi data pertama. Pengukuran offline sudah tersimpan di perangkat.'
+                    : metric === 'weight'
+                      ? 'Belum ada data berat yang valid untuk ditampilkan.'
+                      : metric === 'zscore'
+                        ? 'Belum ada Z-score valid. Simpan pengukuran dengan tinggi (dan tanggal lahir anak) dulu.'
+                        : 'Belum ada data pengukuran untuk anak ini.'}
+                </Text>
+              </View>
             ) : (
               <LineChart
                 data={chart}
@@ -129,10 +166,13 @@ export default function GrowthChartScreen({ navigation, route }: any) {
                 }}
                 bezier
                 style={styles.chart}
+                fromZero={metric !== 'zscore'}
               />
             )}
             <Text style={styles.caption}>
-              {measurements.length} pengukuran · manual / alat / AI
+              {measurements.length} pengukuran
+              {pendingCount > 0 ? ` · ${pendingCount} menunggu sync` : ''}
+              {' · '}manual / alat / AI
             </Text>
           </Card>
         ) : null}

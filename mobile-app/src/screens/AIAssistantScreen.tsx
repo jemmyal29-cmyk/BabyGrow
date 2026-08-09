@@ -3,7 +3,7 @@
  * Solusi Pintar Cegah Stunting
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 import { ScreenHeader, Button } from '../components/common';
 import AIAssistantService, { AIMessage, Language } from '../services/AIAssistantService';
+import { useChildStore } from '../store/childStore';
+import { useAuth } from '../store/authStore';
+import {
+  useChildMeasurements,
+  type MeasurementListItem,
+} from '../hooks/useMeasurements';
+import { calculateAgeInMonths } from '../utils/zScoreCalculator';
+import type { Child, Measurement } from '../types/models';
 
 const QUICK_ACTIONS: {
   label: string;
@@ -50,7 +58,47 @@ const QUICK_ACTIONS: {
   },
 ];
 
+function mapRowToAiMeasurement(
+  row: MeasurementListItem,
+  dateOfBirth: string
+): Measurement {
+  let ageMonths = 0;
+  try {
+    ageMonths = calculateAgeInMonths(dateOfBirth, row.measured_at);
+  } catch {
+    ageMonths = 0;
+  }
+  const source =
+    row.source === 'ble'
+      ? 'iot_ble'
+      : row.source === 'mqtt'
+        ? 'iot_mqtt'
+        : 'manual';
+
+  return {
+    id: row.id,
+    childId: row.child_id,
+    weight: Number(row.weight_kg) > 0 ? Number(row.weight_kg) : 0,
+    height: Number(row.height_cm) || 0,
+    headCircumference:
+      row.head_circumference_cm != null
+        ? Number(row.head_circumference_cm)
+        : undefined,
+    measurementDate: row.measured_at,
+    ageMonths,
+    source,
+    deviceId: row.device_id ?? undefined,
+    notes: row.pending_sync ? 'pending_sync' : undefined,
+    createdBy: 'local',
+    createdAt: row.created_at,
+  };
+}
+
 export default function AIAssistantScreen() {
+  const { user } = useAuth();
+  const activeChild = useChildStore((s) => s.activeChild);
+  const { data: measurementRows = [] } = useChildMeasurements(activeChild?.id);
+
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -63,17 +111,46 @@ export default function AIAssistantScreen() {
   const [realAIEnabled, setRealAIEnabled] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    sendWelcomeMessage();
-  }, []);
+  const aiContext = useMemo(() => {
+    if (!activeChild) {
+      return { child: undefined as Child | undefined, measurements: [] as Measurement[] };
+    }
+    const child: Child = {
+      id: activeChild.id,
+      userId: user?.id ?? '',
+      name: activeChild.name,
+      gender: activeChild.gender,
+      dateOfBirth: activeChild.date_of_birth,
+      createdAt: '',
+      updatedAt: '',
+    };
+    const measurements = [...measurementRows]
+      .filter((r) => Number.isFinite(Number(r.height_cm)) && Number(r.height_cm) > 0)
+      .sort(
+        (a, b) =>
+          new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
+      )
+      .map((r) => mapRowToAiMeasurement(r, activeChild.date_of_birth));
+    return { child, measurements };
+  }, [activeChild, measurementRows, user?.id]);
 
-  const sendWelcomeMessage = async () => {
-    const welcomeMessage = await AIAssistantService.generateResponse('Halo', {
-      userRole,
-      language: currentLanguage,
-    });
-    setMessages([welcomeMessage]);
-  };
+  const askAi = useCallback(
+    async (text: string) =>
+      AIAssistantService.generateResponse(text, {
+        userRole,
+        language: currentLanguage,
+        child: aiContext.child,
+        measurements: aiContext.measurements,
+      }),
+    [userRole, currentLanguage, aiContext]
+  );
+
+  useEffect(() => {
+    void (async () => {
+      const welcomeMessage = await askAi('Halo');
+      setMessages([welcomeMessage]);
+    })();
+  }, []);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
@@ -92,10 +169,7 @@ export default function AIAssistantScreen() {
     setMessages((prev) => [...prev, userMessage]);
 
     try {
-      const response = await AIAssistantService.generateResponse(userMessageText, {
-        userRole,
-        language: currentLanguage,
-      });
+      const response = await askAi(userMessageText);
       setMessages((prev) => [...prev, response]);
     } catch (error) {
       console.error('AI Response Error:', error);
@@ -117,10 +191,7 @@ export default function AIAssistantScreen() {
 
   const handleQuickAction = async (action: string) => {
     setIsLoading(true);
-    const response = await AIAssistantService.generateResponse(action, {
-      userRole,
-      language: currentLanguage,
-    });
+    const response = await askAi(action);
     setMessages((prev) => [...prev, response]);
     setIsLoading(false);
     scrollViewRef.current?.scrollToEnd({ animated: true });

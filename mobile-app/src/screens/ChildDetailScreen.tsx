@@ -29,7 +29,10 @@ import { ageLabelFromDob, CHILDREN_QUERY_KEY } from '../hooks/useChildren';
 import { supabase } from '../services/SupabaseClient';
 import type { ChildRow } from '../types/database';
 import HapticService from '../services/HapticService';
-import { loadParentalMetrics } from '../utils/parentalMetricsStorage';
+import {
+  loadParentalMetrics,
+  parseBlood,
+} from '../utils/parentalMetricsStorage';
 import {
   buildParentalInsight,
   estimatedHealthyWeightKg,
@@ -138,9 +141,9 @@ export default function ChildDetailScreen({
         fatherHeightCm: child.father_height_cm ?? undefined,
         motherWeightKg: child.mother_weight_kg ?? undefined,
         fatherWeightKg: child.father_weight_kg ?? undefined,
-        motherBlood: (child.mother_blood as '' | 'A' | 'B' | 'AB' | 'O') || '',
-        fatherBlood: (child.father_blood as '' | 'A' | 'B' | 'AB' | 'O') || '',
-        childBlood: (child.child_blood as '' | 'A' | 'B' | 'AB' | 'O') || '',
+        motherBlood: parseBlood(child.mother_blood ?? ''),
+        fatherBlood: parseBlood(child.father_blood ?? ''),
+        childBlood: parseBlood(child.child_blood ?? ''),
       };
       const hasDb =
         fromDb.motherHeightCm != null ||
