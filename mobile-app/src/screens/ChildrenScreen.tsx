@@ -20,6 +20,7 @@ import { useAuth, useIsAdmin } from '../store/authStore';
 import { ageLabelFromDob, useChildren } from '../hooks/useChildren';
 import { ScreenHeader } from '../components/common';
 import HapticService from '../services/HapticService';
+import { useChildStore } from '../store/childStore';
 
 type Filter = 'all' | 'warning' | 'normal' | 'newest';
 
@@ -28,6 +29,7 @@ export default function ChildrenScreen({ navigation }: any) {
   const isAdmin = useIsAdmin();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const setActiveChild = useChildStore((s) => s.setActiveChild);
 
   const { data: children = [], isLoading, isError, error, refetch, isRefetching } =
     useChildren(isAdmin ? { fetchAll: true } : { parentId: user?.id });
@@ -162,6 +164,12 @@ export default function ChildrenScreen({ navigation }: any) {
             style={({ pressed }) => [styles.card, pressed && { opacity: 0.92 }]}
             onPress={async () => {
               await HapticService.light();
+              setActiveChild({
+                id: child.id,
+                name: child.name,
+                gender: child.gender,
+                date_of_birth: child.date_of_birth,
+              });
               navigation
                 .getParent()
                 ?.navigate('ChildDetail', { childId: child.id });
@@ -203,6 +211,12 @@ export default function ChildrenScreen({ navigation }: any) {
                 style={[styles.iconBtn, styles.iconBtnPrimary]}
                 onPress={async () => {
                   await HapticService.buttonPress();
+                  setActiveChild({
+                    id: child.id,
+                    name: child.name,
+                    gender: child.gender,
+                    date_of_birth: child.date_of_birth,
+                  });
                   navigation
                     .getParent()
                     ?.navigate('ManualMeasurement', { childId: child.id });

@@ -1,6 +1,10 @@
 /**
  * MeasurementScreen — Live MQTT weight/height from HiveMQ (via useBabyGrowMQTT)
  * Starts MeasurementSync so E2E persist works even without visiting Beranda first.
+ *
+ * Status UX (anti-ambiguity):
+ * - Cloud = internet / mode lokal (NetInfo via sync store)
+ * - Alat  = IoT device liveness (MQTT last-seen), NOT the same as cloud offline
  */
 
 import React, { useEffect, useState } from 'react';
@@ -10,17 +14,22 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ScreenHeader } from '../components/common';
 import { useBabyGrowMQTT } from '../hooks/useBabyGrowMQTT';
+import { useSyncStatus } from '../hooks/useSyncStatus';
 import MeasurementSyncService from '../services/MeasurementSyncService';
 import { useChildStore } from '../store/childStore';
+import { supabase } from '../services/SupabaseClient';
+import HapticService from '../services/HapticService';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
 
 interface MeasurementScreenProps {
   navigation: { goBack: () => void; navigate: (name: string) => void };
+  route?: { params?: { childId?: string } };
 }
 
 function formatLive(value: number, digits = 1): string {
@@ -31,20 +40,19 @@ function formatLive(value: number, digits = 1): string {
 const MOCK_ENABLED =
   __DEV__ || process.env.EXPO_PUBLIC_ALLOW_MOCK?.trim() === '1';
 
-/** Human "X detik/menit lalu" from a device last-seen ISO timestamp. */
-function formatLastSeen(iso: string | null, nowMs: number): string {
-  if (!iso) return 'Belum ada data';
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return 'Belum ada data';
-  const diffSec = Math.max(0, Math.round((nowMs - t) / 1000));
-  if (diffSec < 2) return 'Baru saja';
-  if (diffSec < 60) return `Terakhir kirim ${diffSec} detik lalu`;
-  const min = Math.floor(diffSec / 60);
-  return `Terakhir kirim ${min} menit lalu`;
-}
-
-export default function MeasurementScreen({ navigation }: MeasurementScreenProps) {
+export default function MeasurementScreen({
+  navigation,
+  route,
+}: MeasurementScreenProps) {
   const activeChild = useChildStore((s) => s.activeChild);
+  const setActiveChild = useChildStore((s) => s.setActiveChild);
+  const routeChildId =
+    typeof route?.params?.childId === 'string' ? route.params.childId : undefined;
+
+  const [binding, setBinding] = useState(
+    () => !!routeChildId && activeChild?.id !== routeChildId
+  );
+
   const {
     connectionStatus,
     liveWeight,
@@ -57,10 +65,50 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
     triggerMockMeasurement,
   } = useBabyGrowMQTT({ autoConnect: true });
 
+  const syncStatus = useSyncStatus();
+
   // E2E: persist MQTT → Z-score even if user skip Beranda
   useEffect(() => {
     MeasurementSyncService.getInstance().start();
   }, []);
+
+  // Bind route childId → global store (state-leak circuit breaker)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!routeChildId) {
+        setBinding(false);
+        return;
+      }
+      if (activeChild?.id === routeChildId) {
+        setBinding(false);
+        return;
+      }
+      setBinding(true);
+      try {
+        const { data, error } = await supabase
+          .from('children')
+          .select('id, name, gender, date_of_birth')
+          .eq('id', routeChildId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!error && data?.id) {
+          setActiveChild({
+            id: String(data.id),
+            name: String(data.name ?? ''),
+            gender: data.gender === 'female' ? 'female' : 'male',
+            date_of_birth: String(data.date_of_birth ?? ''),
+          });
+        }
+      } finally {
+        if (!cancelled) setBinding(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeChildId, setActiveChild]);
 
   // Re-render every second so the device "last seen" clock stays fresh.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -69,34 +117,61 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
     return () => clearInterval(id);
   }, []);
 
-  // Broker (HiveMQ WebSocket) — separate from whether the physical device sends data.
-  const brokerColor = isOnline
+  // Cloud = internet (bukan alat IoT)
+  const cloudOnline =
+    syncStatus.isConnected && syncStatus.isInternetReachable !== false;
+  const cloudColor = cloudOnline
     ? colors.status.success
-    : connectionStatus === 'Connecting'
-      ? colors.status.warning
-      : colors.status.error;
-  const brokerLabel =
-    connectionStatus === 'Connected'
-      ? 'Broker: Terhubung'
-      : connectionStatus === 'Connecting'
-        ? 'Broker: Menyambung…'
-        : 'Broker: Terputus';
+    : colors.status.warning;
+  const cloudLabel = cloudOnline
+    ? 'Cloud: Tersambung'
+    : 'Cloud: Offline (Mode Lokal)';
 
-  // Device liveness — "fresh" if a measurement arrived within the last 15s.
+  // Alat = broker MQTT + last-seen device
   const deviceAgeSec = lastUpdatedAt
     ? (nowMs - new Date(lastUpdatedAt).getTime()) / 1000
     : Infinity;
   const deviceFresh = Number.isFinite(deviceAgeSec) && deviceAgeSec <= 15;
-  const deviceColor = deviceFresh
-    ? colors.status.success
-    : lastUpdatedAt
-      ? colors.status.warning
-      : colors.status.error;
-  const deviceLabel = `Alat: ${formatLastSeen(lastUpdatedAt, nowMs)}`;
+
+  let alatColor: string = colors.status.error;
+  let alatLabel = 'Alat: Terputus';
+  if (isOnline && deviceFresh) {
+    alatColor = colors.status.success;
+    alatLabel = 'Alat: Terhubung & Siap';
+  } else if (isOnline) {
+    alatColor = colors.status.warning;
+    alatLabel = 'Alat: Menunggu Data…';
+  } else if (connectionStatus === 'Connecting') {
+    alatColor = colors.status.warning;
+    alatLabel = 'Alat: Menunggu Data…';
+  }
+
+  if (binding) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScreenHeader
+          title="Ukur Live (IoT)"
+          onBack={() => navigation.goBack()}
+        />
+        <View style={styles.breakerBox}>
+          <ActivityIndicator color={colors.primary.main} />
+          <Text style={styles.breakerText}>Memuat data anak…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScreenHeader title="Ukur Live (MQTT)" onBack={() => navigation.goBack()} />
+      <ScreenHeader
+        title="Ukur Live (IoT)"
+        onBack={() => navigation.goBack()}
+        subtitle={
+          activeChild
+            ? `Anak: ${activeChild.name}`
+            : 'Belum ada anak aktif'
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -104,15 +179,15 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
       >
         <View style={styles.statusCard}>
           <View style={styles.statusRow}>
-            <View style={[styles.dot, { backgroundColor: brokerColor }]} />
-            <Text style={[styles.statusText, { color: brokerColor }]}>
-              {brokerLabel}
+            <View style={[styles.dot, { backgroundColor: cloudColor }]} />
+            <Text style={[styles.statusText, { color: cloudColor }]}>
+              {cloudLabel}
             </Text>
           </View>
           <View style={styles.statusRow}>
-            <View style={[styles.dot, { backgroundColor: deviceColor }]} />
-            <Text style={[styles.statusText, { color: deviceColor }]}>
-              {deviceLabel}
+            <View style={[styles.dot, { backgroundColor: alatColor }]} />
+            <Text style={[styles.statusText, { color: alatColor }]}>
+              {alatLabel}
             </Text>
           </View>
           <Text style={styles.meta}>topic `{topic}`</Text>
@@ -121,7 +196,7 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
           ) : (
             <Text style={styles.meta}>Menunggu data ESP32…</Text>
           )}
-          {activeChild ? (
+          {activeChild?.id ? (
             <Text style={styles.childLine}>
               Anak aktif: {activeChild.name} — data stabil akan disimpan otomatis
             </Text>
@@ -137,6 +212,15 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
             </TouchableOpacity>
           )}
         </View>
+
+        {!activeChild?.id ? (
+          <View style={styles.breakerInline}>
+            <Text style={styles.breakerText}>
+              Form live tetap menampilkan angka, tetapi penyimpanan dinonaktifkan
+              sampai anak terkunci.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
@@ -154,7 +238,9 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
 
         <Text style={styles.hint}>
           Data masuk otomatis dari HiveMQ WebSocket. Tahan beban/tinggi stabil
-          ~1–2 detik agar firmware + app mengunci sampel lalu simpan.
+          ~1–2 detik agar firmware + app mengunci sampel lalu simpan. Status
+          Cloud Offline berarti aplikasi menyimpan lokal — bukan berarti alat
+          rusak.
         </Text>
 
         {!isOnline ? (
@@ -164,17 +250,26 @@ export default function MeasurementScreen({ navigation }: MeasurementScreenProps
               size={20}
               color={colors.text.inverse}
             />
-            <Text style={styles.retryText}>Coba sambungkan</Text>
+            <Text style={styles.retryText}>Coba sambungkan alat</Text>
           </TouchableOpacity>
         ) : null}
 
         {MOCK_ENABLED ? (
           <TouchableOpacity
             style={styles.mockBtn}
-            onPress={triggerMockMeasurement}
+            onPress={() => {
+              try {
+                triggerMockMeasurement();
+                void HapticService.light();
+              } catch {
+                // never crash demo fallback
+              }
+            }}
           >
             <Text style={styles.mockText}>
-              {__DEV__ ? '[DEV] Simulasi pengukuran' : 'Simulasi pengukuran (fallback)'}
+              {__DEV__
+                ? '[DEV] Simulasi pengukuran'
+                : 'Simulasi pengukuran (fallback)'}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -192,6 +287,24 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
+  },
+  breakerBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    padding: spacing.xl,
+  },
+  breakerInline: {
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surface.low,
+  },
+  breakerText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
   },
   statusCard: {
     backgroundColor: colors.surface.lowest,

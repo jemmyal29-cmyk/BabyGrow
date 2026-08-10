@@ -37,6 +37,7 @@ import {
   buildParentalInsight,
   estimatedHealthyWeightKg,
 } from '../utils/parentalGrowth';
+import { useChildStore } from '../store/childStore';
 
 interface ChildDetailScreenProps {
   navigation: any;
@@ -88,6 +89,7 @@ export default function ChildDetailScreen({
     useState(false);
   const [parentalSummary, setParentalSummary] = useState<string | null>(null);
   const [weightHint, setWeightHint] = useState<string | null>(null);
+  const setActiveChild = useChildStore((s) => s.setActiveChild);
 
   const childId: string | undefined =
     route?.params?.childId ?? route?.params?.child?.id;
@@ -450,28 +452,63 @@ export default function ChildDetailScreen({
 
         <View style={styles.actions}>
           <Button
-            title="Ukur Manual"
-            onPress={() =>
-              navigation.navigate('ManualMeasurement', { childId: child.id })
-            }
-            variant="secondary"
-            size="large"
-            style={{ flex: 1 }}
-            fullWidth={false}
-          />
-          <Button
-            title="Lihat Grafik"
-            onPress={() =>
-              navigation.navigate('GrowthChart', { childId: child.id })
-            }
+            title="Ukur Live (IoT)"
+            onPress={() => {
+              // Kunci anak profil ini ke global store SEBELUM navigasi
+              // agar MeasurementScreen / sync tidak memakai anak sebelumnya.
+              setActiveChild({
+                id: child.id,
+                name: child.name,
+                gender: child.gender,
+                date_of_birth: child.date_of_birth,
+              });
+              void HapticService.buttonPress();
+              navigation.navigate('Measurement', { childId: child.id });
+            }}
+            variant="primary"
             size="large"
             style={{ flex: 1 }}
             fullWidth={false}
             icon={
               <MaterialCommunityIcons
-                name="chart-line"
+                name="access-point"
                 size={18}
                 color={colors.primary.onPrimary}
+              />
+            }
+          />
+          <Button
+            title="Ukur Manual"
+            onPress={() => {
+              setActiveChild({
+                id: child.id,
+                name: child.name,
+                gender: child.gender,
+                date_of_birth: child.date_of_birth,
+              });
+              void HapticService.buttonPress();
+              navigation.navigate('ManualMeasurement', { childId: child.id });
+            }}
+            variant="outline"
+            size="large"
+            style={{ flex: 1 }}
+            fullWidth={false}
+          />
+        </View>
+        <View style={styles.actions}>
+          <Button
+            title="Lihat Grafik"
+            onPress={() =>
+              navigation.navigate('GrowthChart', { childId: child.id })
+            }
+            variant="secondary"
+            size="large"
+            fullWidth
+            icon={
+              <MaterialCommunityIcons
+                name="chart-line"
+                size={18}
+                color={colors.primary.main}
               />
             }
           />
