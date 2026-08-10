@@ -42,6 +42,7 @@ import {
 import { calculateAgeInMonths } from '../utils/zScoreCalculator';
 import { colors, spacing, typography, borderRadius, shadows } from '../theme';
 import { useChildStore } from '../store/childStore';
+import { useSyncStatus } from '../hooks/useSyncStatus';
 
 function formatMeasuredAt(iso?: string | null): string {
   if (!iso) return '—';
@@ -96,6 +97,9 @@ export default function UserDashboardScreen({ navigation }: any) {
     () => MeasurementSyncService.getInstance(),
     []
   );
+  const syncStatus = useSyncStatus();
+  const cloudOnline =
+    syncStatus.isConnected && syncStatus.isInternetReachable !== false;
 
   React.useEffect(() => {
     if (children.length === 0) {
@@ -203,17 +207,76 @@ export default function UserDashboardScreen({ navigation }: any) {
           />
         </Animated.View>
 
+        <View style={styles.connRow}>
+          <View style={styles.connBadge}>
+            <View
+              style={[
+                styles.connDot,
+                {
+                  backgroundColor: cloudOnline
+                    ? colors.status.success
+                    : colors.status.warning,
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.connText,
+                {
+                  color: cloudOnline
+                    ? colors.status.success
+                    : colors.status.warning,
+                },
+              ]}
+            >
+              {cloudOnline
+                ? 'Cloud: Tersambung'
+                : 'Cloud: Offline (Mode Lokal)'}
+            </Text>
+          </View>
+          <View style={styles.connBadge}>
+            <View
+              style={[
+                styles.connDot,
+                {
+                  backgroundColor: mqttConnected
+                    ? isPaired
+                      ? colors.status.success
+                      : colors.status.warning
+                    : colors.status.error,
+                },
+              ]}
+            />
+            <Text
+              style={[
+                styles.connText,
+                {
+                  color: mqttConnected
+                    ? isPaired
+                      ? colors.status.success
+                      : colors.status.warning
+                    : colors.status.error,
+                },
+              ]}
+            >
+              {mqttConnected
+                ? isPaired
+                  ? 'Alat: Terhubung & Siap'
+                  : 'Alat: Menunggu Data…'
+                : 'Alat: Terputus'}
+            </Text>
+          </View>
+        </View>
+
         <HeroStatusBanner
           badge={
-            mqttConnected
-              ? isPaired
-                ? 'Device: Connected'
-                : 'Alat: Siap'
-              : 'Device: Offline'
+            activeChild
+              ? `Monitoring: ${activeChild.name}`
+              : 'Siap pantau pertumbuhan'
           }
           body={
             activeChild
-              ? `Monitoring aktif untuk ${activeChild.name}.`
+              ? `Monitoring aktif untuk ${activeChild.name}. Cloud Offline = mode lokal (bukan masalah alat).`
               : 'Tambahkan anak untuk mulai pantau pertumbuhan.'
           }
         />
@@ -308,12 +371,22 @@ export default function UserDashboardScreen({ navigation }: any) {
             <QuickMenuTile
               icon="wifi"
               label="Ukur Live"
-              onPress={() => navigation.navigate('Measurement')}
+              onPress={() => {
+                if (activeChild) {
+                  setActiveChild(activeChild);
+                }
+                navigation.navigate('Measurement');
+              }}
             />
             <QuickMenuTile
               icon="scale-bathroom"
               label="Ukur Manual"
-              onPress={() => navigation.navigate('ManualMeasurement')}
+              onPress={() => {
+                if (activeChild) {
+                  setActiveChild(activeChild);
+                }
+                navigation.navigate('ManualMeasurement');
+              }}
             />
             <QuickMenuTile
               icon="chart-line"
@@ -450,6 +523,31 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
     backgroundColor: colors.surface.lowest,
     ...shadows.diffusion,
+  },
+  connRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  connBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.surface.lowest,
+    ...shadows.diffusion,
+  },
+  connDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  connText: {
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: typography.fontSize.xs,
   },
   errorBox: {
     padding: spacing.md,

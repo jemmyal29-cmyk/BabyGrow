@@ -1,6 +1,9 @@
 /**
  * Manual Measurement — validate → WHO Z-score → Supabase (offline queue)
  * Visual: Measurement Dashboard (desainuiux.md)
+ *
+ * Circuit breaker: never save against a stale/empty activeChild.
+ * Route params `{ childId }` bind the store if Detail/Children forgot to lock.
  */
 
 import React from 'react';
@@ -10,7 +13,6 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,7 +26,9 @@ import HapticService from '../services/HapticService';
 import { useChildStore } from '../store/childStore';
 import { getStuntingDisplay } from '../hooks/useMeasurements';
 import { ageLabelFromDob } from '../hooks/useChildren';
+import { supabase } from '../services/SupabaseClient';
 import { colors, typography, spacing, borderRadius, shadows } from '../theme';
+import { showAlert } from '../utils/alert';
 
 const ManualFormSchema = z.object({
   height_cm: z
@@ -39,17 +43,79 @@ const ManualFormSchema = z.object({
     .nullable(),
 });
 
-export default function ManualMeasurementScreen({ navigation }: any) {
+function safeFixed(value: unknown, digits = 1): string {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+}
+
+export default function ManualMeasurementScreen({ navigation, route }: any) {
   const activeChild = useChildStore((s) => s.activeChild);
+  const setActiveChild = useChildStore((s) => s.setActiveChild);
+  const routeChildId =
+    typeof route?.params?.childId === 'string' ? route.params.childId : undefined;
+
   const [height, setHeight] = React.useState('');
   const [weight, setWeight] = React.useState('');
   const [isAutoFilled, setIsAutoFilled] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [binding, setBinding] = React.useState(
+    () => !!routeChildId && activeChild?.id !== routeChildId
+  );
+
   const mqttService = React.useMemo(() => MQTTService.getInstance(), []);
   const syncService = React.useMemo(
     () => MeasurementSyncService.getInstance(),
     []
   );
+
+  // Bind route childId → global store (prevents Haikal screen saving as Sayyid)
+  React.useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!routeChildId) {
+        setBinding(false);
+        return;
+      }
+      if (activeChild?.id === routeChildId) {
+        setBinding(false);
+        return;
+      }
+
+      setBinding(true);
+      try {
+        const { data, error } = await supabase
+          .from('children')
+          .select('id, name, gender, date_of_birth')
+          .eq('id', routeChildId)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || !data?.id) {
+          setBinding(false);
+          return;
+        }
+        setActiveChild({
+          id: String(data.id),
+          name: String(data.name ?? ''),
+          gender: data.gender === 'female' ? 'female' : 'male',
+          date_of_birth: String(data.date_of_birth ?? ''),
+        });
+      } catch {
+        // Leave binding=false so circuit breaker UI can show
+      } finally {
+        if (!cancelled) setBinding(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bind once per routeChildId
+  }, [routeChildId, setActiveChild]);
+
+  React.useEffect(() => {
+    syncService.start();
+  }, [syncService]);
 
   React.useEffect(() => {
     const latestData = mqttService.getLatestMeasurement();
@@ -62,10 +128,13 @@ export default function ManualMeasurementScreen({ navigation }: any) {
   }, [mqttService]);
 
   const handleSave = async () => {
-    if (!activeChild) {
-      Alert.alert(
+    if (saving) return;
+
+    const child = useChildStore.getState().activeChild;
+    if (!child?.id || !child.gender || !child.date_of_birth) {
+      showAlert(
         'Pilih Anak',
-        'Pilih anak aktif dulu di Beranda atau menu Anak sebelum menyimpan pengukuran.',
+        'Data anak belum terkunci. Buka profil anak lalu tekan Ukur Manual lagi.',
         [
           { text: 'Batal', style: 'cancel' },
           {
@@ -73,6 +142,15 @@ export default function ManualMeasurementScreen({ navigation }: any) {
             onPress: () => navigation.navigate('Children'),
           },
         ]
+      );
+      return;
+    }
+
+    // Route vs store mismatch — refuse save (state leak defense)
+    if (routeChildId && child.id !== routeChildId) {
+      showAlert(
+        'Anak tidak cocok',
+        'Profil anak di layar tidak cocok dengan yang dipilih. Kembali ke detail anak lalu ulangi.'
       );
       return;
     }
@@ -92,21 +170,25 @@ export default function ManualMeasurementScreen({ navigation }: any) {
     if (!parsed.success) {
       const msg =
         parsed.error.errors[0]?.message || 'Data pengukuran tidak valid';
-      Alert.alert('Validasi', msg);
+      showAlert('Validasi', msg);
       return;
     }
 
     setSaving(true);
-    await HapticService.buttonPress();
+    try {
+      await HapticService.buttonPress();
+    } catch {
+      // haptic must never block save
+    }
 
     try {
       const row = await syncService.syncToSupabase({
-        child_id: activeChild.id,
+        child_id: child.id,
         height_cm: parsed.data.height_cm,
         weight_kg: parsed.data.weight_kg,
         source: 'manual',
-        gender: activeChild.gender,
-        date_of_birth: activeChild.date_of_birth,
+        gender: child.gender,
+        date_of_birth: child.date_of_birth,
         measured_at: new Date().toISOString(),
       });
 
@@ -117,36 +199,48 @@ export default function ManualMeasurementScreen({ navigation }: any) {
           z_score_wfa: row.z_score_wfa,
         });
         const pending = !!(row as { pending_sync?: boolean }).pending_sync;
-        await HapticService.success();
-        Alert.alert(
-          pending ? 'Tersimpan Offline' : 'Pengukuran Tersimpan',
-          [
-            `Anak: ${activeChild.name}`,
-            `Tinggi: ${row.height_cm.toFixed(1)} cm`,
-            `Berat: ${row.weight_kg != null ? `${Number(row.weight_kg).toFixed(1)} kg` : '—'}`,
-            `Z-Score TB/U: ${row.z_score_hfa != null ? Number(row.z_score_hfa).toFixed(2) : '—'}`,
-            `Status: ${stunting?.label ?? '—'}`,
-            '',
-            pending
-              ? 'Z-score dihitung lokal (WHO LMS). Akan otomatis sync ke cloud saat online.'
-              : 'Data pengukuran berhasil disimpan.',
-          ].join('\n'),
-          [{ text: 'Kembali', onPress: () => navigation.goBack() }]
-        );
+        try {
+          await HapticService.success();
+        } catch {
+          // ignore
+        }
+        const body = [
+          `Anak: ${child.name}`,
+          `Tinggi: ${safeFixed(row.height_cm)} cm`,
+          `Berat: ${row.weight_kg != null ? `${safeFixed(row.weight_kg)} kg` : '—'}`,
+          `Z-Score TB/U: ${row.z_score_hfa != null ? safeFixed(row.z_score_hfa, 2) : '—'}`,
+          `Status: ${stunting?.label ?? '—'}`,
+          '',
+          pending
+            ? 'Z-score dihitung lokal (WHO LMS). Akan otomatis sync ke cloud saat online.'
+            : 'Data pengukuran berhasil disimpan.',
+        ].join('\n');
+        const title = pending ? 'Tersimpan Offline' : 'Pengukuran Tersimpan';
+        showAlert(title, body, [
+          { text: 'Kembali', onPress: () => navigation.goBack() },
+        ]);
         return;
       }
 
-      await HapticService.medium();
-      Alert.alert(
+      try {
+        await HapticService.medium();
+      } catch {
+        // ignore
+      }
+      showAlert(
         'Disimpan Offline',
         'Tidak ada koneksi. Pengukuran masuk antrian sync dan akan dikirim otomatis saat online.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
     } catch (error: unknown) {
-      await HapticService.error();
+      try {
+        await HapticService.error();
+      } catch {
+        // ignore
+      }
       const message =
         error instanceof Error ? error.message : 'Gagal menyimpan pengukuran';
-      Alert.alert('Gagal Menyimpan', message);
+      showAlert('Gagal Menyimpan', message);
     } finally {
       setSaving(false);
     }
@@ -154,16 +248,57 @@ export default function ManualMeasurementScreen({ navigation }: any) {
 
   const weightDisplay = weight.trim() || '—';
 
+  // Circuit breaker: jangan render form saat state anak kosong / sedang bind
+  if (binding) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <ScreenHeader title="Ukur Manual" onBack={() => navigation.goBack()} />
+        <View style={styles.breakerBox}>
+          <ActivityIndicator color={colors.primary.main} />
+          <Text style={styles.breakerText}>Memuat data anak…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!activeChild?.id) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <ScreenHeader
+          title="Ukur Manual"
+          onBack={() => navigation.goBack()}
+          subtitle="Belum ada anak aktif"
+        />
+        <View style={styles.breakerBox}>
+          <MaterialCommunityIcons
+            name="account-child"
+            size={40}
+            color={colors.primary.main}
+          />
+          <Text style={styles.breakerTitle}>Anak belum dipilih</Text>
+          <Text style={styles.breakerText}>
+            Buka profil anak lalu tekan Ukur Manual agar data terkunci dengan
+            benar.
+          </Text>
+          <View style={styles.inlineBtn}>
+            <Button
+              title="Pilih Anak"
+              onPress={() => navigation.navigate('Children')}
+              size="medium"
+              fullWidth
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScreenHeader
         title="Ukur Manual"
         onBack={() => navigation.goBack()}
-        subtitle={
-          activeChild
-            ? `${activeChild.name} · ${ageLabelFromDob(activeChild.date_of_birth)}`
-            : 'Belum ada anak aktif'
-        }
+        subtitle={`${activeChild.name} · ${ageLabelFromDob(activeChild.date_of_birth)}`}
       />
 
       <ScrollView
@@ -171,35 +306,10 @@ export default function ManualMeasurementScreen({ navigation }: any) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {activeChild ? (
-          <Text style={styles.phaseLabel}>
-            Measurement for{' '}
-            <Text style={styles.phaseName}>{activeChild.name}</Text>
-          </Text>
-        ) : null}
-
-        {!activeChild ? (
-          <Card variant="elevated" padding="large">
-            <MaterialCommunityIcons
-              name="account-child"
-              size={32}
-              color={colors.primary.main}
-              style={styles.cardIcon}
-            />
-            <Text style={styles.infoTitle}>Anak belum dipilih</Text>
-            <Text style={styles.infoDesc}>
-              Buka menu Anak untuk memilih profil, lalu kembali ke sini.
-            </Text>
-            <View style={styles.inlineBtn}>
-              <Button
-                title="Pilih Anak"
-                onPress={() => navigation.navigate('Children')}
-                size="medium"
-                fullWidth
-              />
-            </View>
-          </Card>
-        ) : null}
+        <Text style={styles.phaseLabel}>
+          Measurement for{' '}
+          <Text style={styles.phaseName}>{activeChild.name}</Text>
+        </Text>
 
         <Animated.View entering={FadeInDown.duration(500)}>
           <Card variant="elevated" padding="large" style={styles.weightCard}>
@@ -312,10 +422,11 @@ export default function ManualMeasurementScreen({ navigation }: any) {
           ) : (
             <Button
               title="Simpan Pengukuran"
-              onPress={handleSave}
+              onPress={() => {
+                void handleSave();
+              }}
               size="large"
               fullWidth
-              disabled={!activeChild}
             />
           )}
           <Button
@@ -342,6 +453,23 @@ const styles = StyleSheet.create({
     paddingBottom: 90,
     gap: spacing.md,
   },
+  breakerBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  breakerTitle: {
+    ...typography.styles.headlineLgMobile,
+    color: colors.text.onSurface,
+    textAlign: 'center',
+  },
+  breakerText: {
+    ...typography.styles.bodyMd,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
   phaseLabel: {
     ...typography.styles.headlineLgMobile,
     color: colors.text.onSurface,
@@ -349,10 +477,6 @@ const styles = StyleSheet.create({
   },
   phaseName: {
     color: colors.primary.main,
-  },
-  cardIcon: {
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
   },
   weightCard: {
     alignItems: 'center',
@@ -473,6 +597,7 @@ const styles = StyleSheet.create({
   },
   inlineBtn: {
     marginTop: spacing.md,
+    width: '100%',
   },
   buttonGroup: {
     gap: spacing.sm,
