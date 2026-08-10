@@ -1,26 +1,21 @@
 /*
  * ============================================================================
- * BabyGrow — ESP32 FULL (SATU FILE) → HiveMQ Cloud → App
+ * BabyGrow ESP32 — FULL READY (LCD 16x2 + VL53L1X + HX711 + HiveMQ)
  * ============================================================================
- * CARA PAKAI (Arduino IDE Windows):
- *   1) Buat folder: Documents\Arduino\Skripsi\
- *   2) Copy file ini sebagai: Skripsi.ino  (nama folder = nama file)
- *   3) WAJIB edit WIFI_SSID + WIFI_PASSWORD di bawah
- *   4) Board: ESP32 Dev Module | Upload Speed 115200
- *   5) Install library:
- *        - PubSubClient (Nick O'Leary)
- *        - VL53L1X (Pololu)
- *        - HX711 (Bogde)  ← pakai SATU library saja
- *   6) Upload → Serial Monitor 115200 baud
- *      Harus muncul: [WIFI] OK ... [MQTT] CONNECTED ... [MQTT] PUB ...
+ * Sidang / demo ready:
+ *   - LCD menampilkan Tinggi & Berat secara live
+ *   - Timbangan HX711 di-tare saat boot + debug Serial
+ *   - MQTT TLS → HiveMQ → App (tombol Ukur Live)
+ *   - BLE "BabyGrow_Alat" → App (tombol Ukur Otomatis / pairing)
  *
- * Payload ke app:
- *   Topic: babygrow/measurements
- *   JSON : {"device_id":"...","weight":..,"height":..}
+ * Library Arduino:
+ *   1) PubSubClient          (Nick O'Leary)
+ *   2) VL53L1X               (Pololu)
+ *   3) HX711                 (Bogde) — PASANG SATU SAJA
+ *   4) LiquidCrystal I2C     (Frank de Brabander / John Rickman)
+ *   BLE = built-in ESP32 (tidak perlu library ekstra)
  *
- * Pin:
- *   VL53L1X  SDA=21 SCL=22
- *   HX711    DT=14  SCK=13
+ * Board: ESP32 Dev Module | Serial: 115200
  * ============================================================================
  */
 
@@ -30,16 +25,27 @@
 #include <Wire.h>
 #include <VL53L1X.h>
 #include "HX711.h"
+#include <LiquidCrystal_I2C.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+// UUID harus sama dengan mobile-app BLEService.ts
+#define BLE_DEVICE_NAME     "BabyGrow_Alat"
+#define BLE_SERVICE_UUID    "0000fff0-0000-1000-8000-00805f9b34fb"
+#define BLE_HEIGHT_UUID     "0000fff1-0000-1000-8000-00805f9b34fb"
+#define BLE_WEIGHT_UUID     "0000fff2-0000-1000-8000-00805f9b34fb"
+#define BLE_BATTERY_UUID    "0000fff3-0000-1000-8000-00805f9b34fb"
 
 // ============================================================================
-// ===== EDIT DI SINI (WAJIB) =====
+// ===== KREDENSIAL (sudah diisi untuk demo) =====
 // ============================================================================
-static const char *WIFI_SSID     = "NAMA_WIFI_ANDA";      // <-- GANTI
-static const char *WIFI_PASSWORD = "PASSWORD_WIFI_ANDA";  // <-- GANTI
+static const char *WIFI_SSID     = "Bjirrrr";
+static const char *WIFI_PASSWORD = "88888888";
 
-// HiveMQ Cloud (sudah cocok dengan app BabyGrow)
 static const char *MQTT_HOST     = "c7f36a1bb1d8404789377b45eccc627f.s1.eu.hivemq.cloud";
-static const uint16_t MQTT_PORT  = 8883;  // ESP32 = MQTT TLS (bukan 8884)
+static const uint16_t MQTT_PORT  = 8883;
 static const char *MQTT_USER     = "BABYGROW";
 static const char *MQTT_PASS     = "Satusampelapan";
 static const char *MQTT_TOPIC    = "babygrow/measurements";
@@ -48,36 +54,53 @@ static const char *MQTT_CLIENT_PREFIX = "babygrow_esp32";
 // ============================================================================
 // BUILD FLAGS
 // ============================================================================
-/** 0 = sensor asli | 1 = data simulasi jika sensor gagal */
-#define DEMO_MODE           0
-#define MQTT_INSECURE_TLS   1
-#define REQUIRE_STABLE_SAMPLE 1
+/** 0 = sensor asli | 1 = simulasi jika sensor gagal (untuk uji app saja) */
+#define DEMO_MODE               0
+#define MQTT_INSECURE_TLS       1
+#define REQUIRE_STABLE_SAMPLE   1
 
 // ============================================================================
 // PINOUT
 // ============================================================================
-#define I2C_SDA            21
-#define I2C_SCL            22
-#define HX711_DT           14
-#define HX711_SCK          13
-#define BATTERY_PIN        35
-#define STATUS_LED         2
+#define I2C_SDA             21
+#define I2C_SCL             22
+#define HX711_DT            14
+#define HX711_SCK           13
+#define BATTERY_PIN         35
+#define STATUS_LED          2
+
+// LCD — detect 0x27 / 0x3F saat boot (banyak modul beda alamat)
+LiquidCrystal_I2C lcd27(0x27, 16, 2);
+LiquidCrystal_I2C lcd3f(0x3F, 16, 2);
+LiquidCrystal_I2C *lcd = &lcd27;
 
 // ============================================================================
-// SENSOR TUNING
+// SENSOR TUNING — sesuaikan tinggi mount & faktor load cell
 // ============================================================================
+/** Jarak sensor ToF ke lantai / alas ukur (cm) */
 #define SENSOR_MOUNT_HEIGHT_CM  200.0f
+
+/**
+ * Faktor kalibrasi HX711.
+ * Cara kalibrasi cepat:
+ *   1) Boot tanpa beban → Serial lihat "raw after tare ~0"
+ *   2) Taruh beban diketahui (mis. 5 kg) → catat raw
+ *   3) CAL = raw / 5000 (gram). Sesuaikan tanda +/- jika terbalik.
+ */
 #define HX711_CAL_FACTOR        -7050.0f
-#define HEIGHT_MIN_CM           40.0f
-#define HEIGHT_MAX_CM           130.0f
-#define WEIGHT_MIN_KG           2.0f
-#define WEIGHT_MAX_KG           30.0f
+
+#define HEIGHT_MIN_CM           30.0f
+#define HEIGHT_MAX_CM           140.0f
+/** Berat minimum untuk dianggap valid (kg) — longgar untuk balita */
+#define WEIGHT_MIN_KG           0.5f
+#define WEIGHT_MAX_KG           40.0f
 
 #define SAMPLE_INTERVAL_MS      200UL
 #define PUBLISH_INTERVAL_MS     1500UL
+#define LCD_INTERVAL_MS         400UL
 #define STABLE_WINDOW           5
-#define STABLE_HEIGHT_STD_CM    0.40f
-#define STABLE_WEIGHT_STD_KG    0.08f
+#define STABLE_HEIGHT_STD_CM    0.50f
+#define STABLE_WEIGHT_STD_KG    0.12f
 #define WIFI_RETRY_MS           5000UL
 #define MQTT_RETRY_BASE_MS      2000UL
 #define MQTT_RETRY_MAX_MS       30000UL
@@ -98,9 +121,22 @@ bool wifiReady = false;
 bool mqttReady = false;
 bool heightOk = false;
 bool weightOk = false;
+bool lcdOk = false;
+bool bleConnected = false;
+bool bleWasConnected = false;
+
+BLEServer *bleServer = nullptr;
+BLECharacteristic *bleHeightChar = nullptr;
+BLECharacteristic *bleWeightChar = nullptr;
+BLECharacteristic *bleBatteryChar = nullptr;
+
+unsigned long lastBleNotifyMs = 0;
+#define BLE_NOTIFY_INTERVAL_MS 1000UL
 
 float liveHeight = 0.0f;
 float liveWeight = 0.0f;
+bool  haveHeight = false;
+bool  haveWeight = false;
 int   batteryPct = 100;
 
 float heightBuf[STABLE_WINDOW];
@@ -111,6 +147,7 @@ unsigned long lastSampleMs = 0;
 unsigned long lastPublishMs = 0;
 unsigned long lastWifiAttemptMs = 0;
 unsigned long lastMqttAttemptMs = 0;
+unsigned long lastLcdUpdateMs = 0;
 unsigned long mqttBackoffMs = MQTT_RETRY_BASE_MS;
 uint32_t publishCount = 0;
 float lastPublishedH = -999.0f;
@@ -154,14 +191,66 @@ static int readBatteryPercent() {
   return (int)clampf((float)pct, 0.0f, 100.0f);
 }
 
+/** Scan I2C — cari LCD 0x27 / 0x3F */
+static uint8_t detectLcdAddress() {
+  Serial.println("[I2C] Scanning...");
+  uint8_t foundLcd = 0;
+  for (uint8_t addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("[I2C] device @ 0x%02X\n", addr);
+      if (addr == 0x27 || addr == 0x3F) foundLcd = addr;
+    }
+  }
+  if (foundLcd == 0) {
+    Serial.println("[I2C] LCD not found — fallback 0x27");
+    return 0x27;
+  }
+  Serial.printf("[I2C] LCD selected 0x%02X\n", foundLcd);
+  return foundLcd;
+}
+
+static void lcdPrintLine(uint8_t row, const char *text) {
+  if (!lcdOk || !lcd) return;
+  char buf[17];
+  snprintf(buf, sizeof(buf), "%-16s", text);
+  lcd->setCursor(0, row);
+  lcd->print(buf);
+}
+
+static void updateLCD(float h, float w, bool okH, bool okW) {
+  if (!lcdOk || !lcd) return;
+
+  char line0[17];
+  char line1[17];
+
+  if (okH && h > 0.1f) {
+    snprintf(line0, sizeof(line0), "T: %5.1f cm     ", h);
+  } else {
+    snprintf(line0, sizeof(line0), "T: ---- cm      ");
+  }
+
+  // Status: B=BLE paired  O=MQTT online  M=MQTT down  W=WiFi down
+  char status = bleConnected ? 'B' : (!wifiReady ? 'W' : (!mqttReady ? 'M' : 'O'));
+  if (okW && w >= 0.05f) {
+    snprintf(line1, sizeof(line1), "B:%5.2fkg  [%c] ", w, status);
+  } else {
+    snprintf(line1, sizeof(line1), "B: --.--kg [%c] ", status);
+  }
+
+  lcd->setCursor(0, 0);
+  lcd->print(line0);
+  lcd->setCursor(0, 1);
+  lcd->print(line1);
+}
+
 // ============================================================================
 // SENSORS
 // ============================================================================
 static bool initHeightSensor() {
-  Wire.begin(I2C_SDA, I2C_SCL);
   heightSensor.setTimeout(500);
   if (!heightSensor.init()) {
-    Serial.println("[SENSOR] VL53L1X init FAIL");
+    Serial.println("[SENSOR] VL53L1X (0x29) FAIL");
     return false;
   }
   heightSensor.setDistanceMode(VL53L1X::Long);
@@ -173,14 +262,26 @@ static bool initHeightSensor() {
 
 static bool initWeightSensor() {
   scale.begin(HX711_DT, HX711_SCK);
-  delay(300);
+  delay(500);
   if (!scale.is_ready()) {
-    Serial.println("[SENSOR] HX711 not ready");
+    Serial.println("[SENSOR] HX711 NOT READY — cek kabel DT=14 SCK=13");
     return false;
   }
+
+  // Baca raw sebelum tare (debug)
+  long rawBefore = scale.read_average(10);
+  Serial.printf("[HX711] raw before tare = %ld\n", rawBefore);
+
   scale.set_scale(HX711_CAL_FACTOR);
-  scale.tare();
-  Serial.println("[SENSOR] HX711 OK (tared)");
+  scale.tare(20);  // rata-rata 20 sampel, pastikan plat kosong
+  delay(200);
+
+  long rawAfter = scale.read_average(10);
+  float units = scale.get_units(10);
+  Serial.printf("[HX711] raw after tare  = %ld\n", rawAfter);
+  Serial.printf("[HX711] units (kg*1000?) = %.2f  (expect ~0 tanpa beban)\n", units);
+  Serial.printf("[HX711] CAL_FACTOR = %.1f\n", (double)HX711_CAL_FACTOR);
+  Serial.println("[SENSOR] HX711 OK — pastikan plat KOSONG saat tare");
   return true;
 }
 
@@ -188,8 +289,17 @@ static bool readHeightCm(float &outCm) {
   if (!heightOk) return false;
   heightSensor.read();
   if (heightSensor.timeoutOccurred()) return false;
+
   float distanceCm = heightSensor.ranging_data.range_mm / 10.0f;
   float h = SENSOR_MOUNT_HEIGHT_CM - distanceCm;
+
+  // Debug berkala lewat Serial (bukan setiap loop)
+  static unsigned long lastDbg = 0;
+  if (millis() - lastDbg > 2000) {
+    lastDbg = millis();
+    Serial.printf("[ToF] dist=%.1f cm → height=%.1f cm\n", distanceCm, h);
+  }
+
   if (h < HEIGHT_MIN_CM || h > HEIGHT_MAX_CM) return false;
   outCm = h;
   return true;
@@ -198,10 +308,32 @@ static bool readHeightCm(float &outCm) {
 static bool readWeightKg(float &outKg) {
   if (!weightOk) return false;
   if (!scale.is_ready()) return false;
-  float grams = scale.get_units(8);
-  float kg = grams / 1000.0f;
-  if (kg < 0.05f) kg = 0.0f;
-  if (kg > 0.0f && (kg < WEIGHT_MIN_KG || kg > WEIGHT_MAX_KG)) return false;
+
+  // get_units biasanya dalam "unit kalibrasi".
+  // Jika CAL_FACTOR diset untuk gram: bagi 1000 → kg.
+  // Jika sudah untuk kg: langsung pakai.
+  float units = scale.get_units(8);
+  float kg = units;
+
+  // Heuristik: kalau nilai abs besar (>100), anggap masih gram
+  if (fabsf(kg) > 100.0f) {
+    kg = kg / 1000.0f;
+  }
+
+  // Noise lantai
+  if (fabsf(kg) < 0.05f) kg = 0.0f;
+  // Beban negatif sering karena CAL terbalik — ambil absolut untuk demo
+  if (kg < 0.0f) kg = fabsf(kg);
+
+  static unsigned long lastDbg = 0;
+  if (millis() - lastDbg > 2000) {
+    lastDbg = millis();
+    Serial.printf("[HX711] units=%.2f → kg=%.3f\n", units, kg);
+  }
+
+  // Untuk LCD: tampilkan apa adanya (termasuk < WEIGHT_MIN)
+  // Untuk publish MQTT: filter di isStable / publish
+  if (kg > WEIGHT_MAX_KG) return false;
   outKg = kg;
   return true;
 }
@@ -235,13 +367,82 @@ static bool isStable(float &stableH, float &stableW) {
     return false;
   }
   stableH = heightBuf[STABLE_WINDOW - 1];
-  stableW = lastW;
+  // Publish berat hanya jika di atas ambang balita
+  stableW = (lastW >= WEIGHT_MIN_KG) ? lastW : 0.0f;
   return true;
 #endif
 }
 
 // ============================================================================
-// NETWORK — WiFi + MQTT TLS
+// BLE — nama iklan WAJIB "BabyGrow_Alat" (dipakai tombol Ukur Otomatis)
+// ============================================================================
+class BabyGrowBleCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer *pServer) override {
+    bleConnected = true;
+    Serial.println("[BLE] HP TERHUBUNG (pairing OK)");
+  }
+  void onDisconnect(BLEServer *pServer) override {
+    bleConnected = false;
+    Serial.println("[BLE] HP putus — advertising lagi");
+    BLEDevice::startAdvertising();
+  }
+};
+
+static void initBle() {
+  Serial.println("[BLE] Init sebagai BabyGrow_Alat ...");
+  BLEDevice::init(BLE_DEVICE_NAME);
+  bleServer = BLEDevice::createServer();
+  bleServer->setCallbacks(new BabyGrowBleCallbacks());
+
+  BLEService *svc = bleServer->createService(BLE_SERVICE_UUID);
+
+  bleHeightChar = svc->createCharacteristic(
+      BLE_HEIGHT_UUID,
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  bleHeightChar->addDescriptor(new BLE2902());
+
+  bleWeightChar = svc->createCharacteristic(
+      BLE_WEIGHT_UUID,
+      BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
+  bleWeightChar->addDescriptor(new BLE2902());
+
+  bleBatteryChar = svc->createCharacteristic(
+      BLE_BATTERY_UUID, BLECharacteristic::PROPERTY_READ);
+
+  svc->start();
+
+  BLEAdvertising *adv = BLEDevice::getAdvertising();
+  adv->addServiceUUID(BLE_SERVICE_UUID);
+  adv->setScanResponse(true);
+  adv->setMinPreferred(0x06);
+  adv->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+
+  Serial.println("[BLE] Advertising ON — nama: BabyGrow_Alat");
+  Serial.println("[BLE] App → Ukur Otomatis → harus menemukan alat ini");
+}
+
+static void notifyBle(float h, float w, int battery) {
+  if (!bleConnected || !bleHeightChar || !bleWeightChar) return;
+
+  char hStr[12];
+  char wStr[12];
+  char bStr[8];
+  dtostrf(h, 5, 1, hStr);
+  dtostrf(w, 5, 2, wStr);
+  snprintf(bStr, sizeof(bStr), "%d", battery);
+
+  bleHeightChar->setValue(hStr);
+  bleHeightChar->notify();
+  bleWeightChar->setValue(wStr);
+  bleWeightChar->notify();
+  if (bleBatteryChar) bleBatteryChar->setValue(bStr);
+
+  Serial.printf("[BLE] notify H=%s W=%s bat=%s\n", hStr, wStr, bStr);
+}
+
+// ============================================================================
+// NETWORK
 // ============================================================================
 static void ensureWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
@@ -255,13 +456,20 @@ static void ensureWiFi() {
   if (now - lastWifiAttemptMs < WIFI_RETRY_MS) return;
   lastWifiAttemptMs = now;
 
-  Serial.printf("[WIFI] Connecting to SSID '%s'...\n", WIFI_SSID);
+  if (lcdOk) {
+    lcdPrintLine(0, "WiFi connecting");
+    lcdPrintLine(1, WIFI_SSID);
+  }
+
+  Serial.printf("[WIFI] Connecting to '%s'...\n", WIFI_SSID);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.disconnect(true, true);
+  delay(100);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 12000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(250);
     Serial.print('.');
   }
@@ -272,9 +480,18 @@ static void ensureWiFi() {
     Serial.printf("[WIFI] OK ip=%s rssi=%d\n",
                   WiFi.localIP().toString().c_str(), WiFi.RSSI());
     blinkStatus(2);
+    if (lcdOk) {
+      lcdPrintLine(0, "WiFi OK");
+      lcdPrintLine(1, WiFi.localIP().toString().c_str());
+      delay(800);
+    }
   } else {
-    Serial.println("[WIFI] FAILED — will retry");
+    Serial.println("[WIFI] FAILED — retry");
     blinkStatus(5, 40);
+    if (lcdOk) {
+      lcdPrintLine(0, "WiFi GAGAL");
+      lcdPrintLine(1, "Cek SSID/Pass");
+    }
   }
 }
 
@@ -285,13 +502,7 @@ static void mqttCallback(char *topic, byte *payload, unsigned int length) {
 static bool connectMqtt() {
   if (!wifiReady) return false;
 
-#if MQTT_INSECURE_TLS
   secureClient.setInsecure();
-#else
-  secureClient.setInsecure();
-  Serial.println("[MQTT] WARN: CA belum dipasang — memakai setInsecure()");
-#endif
-
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(mqttCallback);
   mqtt.setKeepAlive(30);
@@ -300,6 +511,11 @@ static bool connectMqtt() {
 
   Serial.printf("[MQTT] Connecting %s:%u as %s ...\n",
                 MQTT_HOST, MQTT_PORT, mqttClientId.c_str());
+
+  if (lcdOk) {
+    lcdPrintLine(0, "MQTT connecting");
+    lcdPrintLine(1, "HiveMQ Cloud");
+  }
 
   bool ok = mqtt.connect(
       mqttClientId.c_str(),
@@ -310,10 +526,15 @@ static bool connectMqtt() {
   if (ok) {
     mqttReady = true;
     mqttBackoffMs = MQTT_RETRY_BASE_MS;
-    Serial.println("[MQTT] CONNECTED to HiveMQ Cloud");
+    Serial.println("[MQTT] CONNECTED → App siap terima data");
     String statusTopic = String("babygrow/device/") + deviceId + "/status";
     mqtt.publish(statusTopic.c_str(), "{\"online\":true}", true);
     blinkStatus(3);
+    if (lcdOk) {
+      lcdPrintLine(0, "MQTT CONNECTED");
+      lcdPrintLine(1, "Siap ukur");
+      delay(1000);
+    }
     return true;
   }
 
@@ -321,6 +542,10 @@ static bool connectMqtt() {
   Serial.printf("[MQTT] FAIL state=%d — backoff %lums\n",
                 mqtt.state(), mqttBackoffMs);
   mqttBackoffMs = min(mqttBackoffMs * 2, MQTT_RETRY_MAX_MS);
+  if (lcdOk) {
+    lcdPrintLine(0, "MQTT GAGAL");
+    lcdPrintLine(1, "Cek internet");
+  }
   return false;
 }
 
@@ -331,7 +556,6 @@ static void ensureMqtt() {
     mqtt.loop();
     return;
   }
-
   mqttReady = false;
   unsigned long now = millis();
   if (now - lastMqttAttemptMs < mqttBackoffMs) return;
@@ -342,7 +566,6 @@ static void ensureMqtt() {
 static bool publishMeasurement(float heightCm, float weightKg) {
   if (!mqtt.connected()) return false;
 
-  // Dedup longgar untuk demo (tetap kirim jika berubah sedikit)
   if (fabsf(heightCm - lastPublishedH) < 0.05f &&
       fabsf(weightKg - lastPublishedW) < 0.02f &&
       publishCount > 0) {
@@ -376,10 +599,19 @@ static bool publishMeasurement(float heightCm, float weightKg) {
     publishCount++;
     lastPublishedH = heightCm;
     lastPublishedW = weightKg;
-    Serial.printf("[MQTT] PUB %s → %s\n", MQTT_TOPIC, payload);
+    Serial.printf("[MQTT] PUB → %s\n", payload);
     digitalWrite(STATUS_LED, HIGH);
-    delay(30);
+    delay(40);
     digitalWrite(STATUS_LED, LOW);
+
+    // Flash singkat di LCD bahwa data terkirim ke app
+    if (lcdOk) {
+      lcdPrintLine(0, ">> KIRIM KE APP");
+      char msg[17];
+      snprintf(msg, sizeof(msg), "%.1fcm %.2fkg", heightCm, weightKg);
+      lcdPrintLine(1, msg);
+      delay(600);
+    }
   } else {
     Serial.println("[MQTT] publish failed");
   }
@@ -400,12 +632,30 @@ void setup() {
   delay(800);
   Serial.println();
   Serial.println("================================================");
-  Serial.println(" BabyGrow ESP32 FULL → HiveMQ Cloud MQTT");
+  Serial.println(" BabyGrow ESP32 — LCD + ToF + HX711 + MQTT + BLE");
+  Serial.println(" READY FOR SIDANG (Ukur Live + Ukur Otomatis)");
   Serial.println("================================================");
 
   pinMode(STATUS_LED, OUTPUT);
   digitalWrite(STATUS_LED, LOW);
   pinMode(BATTERY_PIN, INPUT);
+
+  // I2C bersama: LCD + VL53L1X
+  Wire.begin(I2C_SDA, I2C_SCL);
+  delay(100);
+
+  {
+    uint8_t addr = detectLcdAddress();
+    lcd = (addr == 0x3F) ? &lcd3f : &lcd27;
+    lcd->init();
+    lcd->backlight();
+    lcd->clear();
+    lcdOk = true;
+    Serial.printf("[LCD] using 0x%02X\n", addr);
+  }
+  lcdPrintLine(0, " BabyGrow System");
+  lcdPrintLine(1, " Booting...");
+  delay(800);
 
   uint64_t chip = ESP.getEfuseMac();
   char idBuf[32];
@@ -425,24 +675,65 @@ void setup() {
   Serial.printf("DEMO_MODE = %d\n", DEMO_MODE);
   Serial.printf("WIFI_SSID = %s\n", WIFI_SSID);
 
+  lcdPrintLine(0, "Init sensors...");
   heightOk = initHeightSensor();
   weightOk = initWeightSensor();
-  if (!heightOk || !weightOk) {
-    Serial.println("[WARN] Sensor partial/fail — set DEMO_MODE 1 jika perlu uji tanpa sensor");
+
+  if (!heightOk && !weightOk) {
+    lcdPrintLine(0, "SENSOR FAIL");
+    lcdPrintLine(1, "Cek kabel/DEMO");
+    Serial.println("[WARN] Kedua sensor gagal");
+  } else if (!heightOk) {
+    lcdPrintLine(0, "ToF FAIL");
+    lcdPrintLine(1, "Cek VL53L1X");
+  } else if (!weightOk) {
+    lcdPrintLine(0, "HX711 FAIL");
+    lcdPrintLine(1, "Cek load cell");
+  } else {
+    lcdPrintLine(0, "Sensor OK");
+    lcdPrintLine(1, "ToF+HX711 ready");
   }
+  delay(1200);
+
+  // BLE dulu agar HP bisa scan saat WiFi masih connect
+  lcdPrintLine(0, "BLE starting");
+  lcdPrintLine(1, "BabyGrow_Alat");
+  initBle();
+  delay(500);
 
   ensureWiFi();
   if (wifiReady) connectMqtt();
 
+  if (lcd) lcd->clear();
+  lcdPrintLine(0, "SYSTEM READY");
+  if (mqttReady) {
+    lcdPrintLine(1, "BLE+MQTT ON");
+  } else {
+    lcdPrintLine(1, "BLE ON MQTT?");
+  }
+  delay(1200);
+  if (lcd) lcd->clear();
+
   Serial.println("[BOOT] ready");
+  Serial.println("  • Ukur Live     = MQTT/WiFi");
+  Serial.println("  • Ukur Otomatis = Bluetooth BabyGrow_Alat");
 }
 
 void loop() {
   ensureWiFi();
   ensureMqtt();
 
+  // Re-advertise setelah disconnect BLE
+  if (!bleConnected && bleWasConnected) {
+    delay(200);
+    BLEDevice::startAdvertising();
+    Serial.println("[BLE] re-advertise");
+  }
+  bleWasConnected = bleConnected;
+
   unsigned long now = millis();
 
+  // ---- sample ----
   if (now - lastSampleMs >= SAMPLE_INTERVAL_MS) {
     lastSampleMs = now;
     batteryPct = readBatteryPercent();
@@ -464,13 +755,43 @@ void loop() {
     }
 #endif
 
+    haveHeight = gotH;
+    haveWeight = gotW;
+
     if (gotH) {
       liveHeight = h;
       liveWeight = gotW ? w : 0.0f;
       pushSample(liveHeight, liveWeight);
+    } else if (gotW) {
+      liveWeight = w;
     }
   }
 
+  // ---- LCD live ----
+  if (now - lastLcdUpdateMs >= LCD_INTERVAL_MS) {
+    lastLcdUpdateMs = now;
+    updateLCD(liveHeight, liveWeight, haveHeight, haveWeight);
+  }
+
+  // ---- BLE notify ke HP yang sudah pair (Ukur Otomatis) ----
+  if (bleConnected && (now - lastBleNotifyMs >= BLE_NOTIFY_INTERVAL_MS)) {
+    lastBleNotifyMs = now;
+    float hSend = haveHeight ? liveHeight : 0.0f;
+    float wSend = haveWeight ? liveWeight : 0.0f;
+#if DEMO_MODE
+    if (hSend < 1.0f) {
+      float dh, dw;
+      demoTick(dh, dw);
+      hSend = dh;
+      wSend = dw;
+    }
+#endif
+    if (hSend > 1.0f) {
+      notifyBle(hSend, wSend, batteryPct);
+    }
+  }
+
+  // ---- MQTT publish jika stabil (Ukur Live) ----
   if (mqttReady && (now - lastPublishMs >= PUBLISH_INTERVAL_MS)) {
     float sh = 0, sw = 0;
     if (isStable(sh, sw) && sh > 0) {

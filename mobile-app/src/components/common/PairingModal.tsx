@@ -98,14 +98,18 @@ const PairingModal: React.FC<PairingModalProps> = ({
       setMessage('Mencari alat BabyGrow di sekitar Anda…');
       HapticService.light();
 
-      const devices = await bleService.scanForDevices(10);
-      
-      // Find BabyGrow_Alat
-      const babyGrowDevice = devices.find(d => d.name === 'BabyGrow_Alat');
-      
+      const devices = await bleService.scanForDevices(12);
+
+      // Cari BabyGrow_Alat (nama exact / mengandung BabyGrow)
+      const babyGrowDevice =
+        devices.find((d) => d.name === 'BabyGrow_Alat') ||
+        devices.find((d) =>
+          (d.name || '').toLowerCase().includes('babygrow')
+        );
+
       if (!babyGrowDevice) {
         throw new Error(
-          'Alat belum ditemukan.\n\nCoba lagi setelah:\n• Alat sudah dinyalakan\n• Bluetooth HP aktif\n• HP dan alat berdekatan (beberapa meter)\n• Tidak sedang dipakai HP lain'
+          'Alat belum ditemukan.\n\nPastikan:\n• ESP32 sudah di-flash firmware terbaru (BLE ON)\n• Serial Monitor: [BLE] Advertising ON — BabyGrow_Alat\n• Bluetooth HP aktif + izin lokasi\n• HP dekat alat (±2 m)\n\nAlternatif sidang: pakai Ukur Live (MQTT).'
         );
       }
 
