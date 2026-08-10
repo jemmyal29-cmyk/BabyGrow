@@ -186,22 +186,22 @@ class BLEService {
   }
 
   /**
-   * Scan for BLE devices
-   * Looks for "BabyGrow_Alat" device
+   * Scan for BLE devices — mencari "BabyGrow_Alat"
    */
   async scanForDevices(durationSeconds: number = 10): Promise<BLEDevice[]> {
     console.log('🔍 Starting BLE scan...');
 
-    // Check permissions
     const hasPermission = await this.requestPermissions();
     if (!hasPermission) {
-      throw new Error('Bluetooth permissions not granted');
+      throw new Error(
+        'Izin Bluetooth/Lokasi belum diberikan. Aktifkan di Pengaturan HP.'
+      );
     }
 
     this.isScanning = true;
     this.emit('scanStart', { duration: durationSeconds });
 
-    // MOCK MODE — __DEV__ only
+    // MOCK MODE — __DEV__ only (Expo Go)
     if (this.mockMode) {
       if (!__DEV__) {
         this.isScanning = false;
@@ -215,10 +215,9 @@ class BLEService {
               id: 'ESP32_BLE_DEMO',
               name: 'BabyGrow_Alat',
               rssi: -45,
-              serviceUUIDs: [SERVICE_UUID]
-            }
+              serviceUUIDs: [SERVICE_UUID],
+            },
           ];
-          
           this.isScanning = false;
           this.emit('scanComplete', { devices: mockDevices });
           console.log('✅ BLE Scan complete (Mock __DEV__): Found BabyGrow_Alat');
@@ -227,17 +226,92 @@ class BLEService {
       });
     }
 
-    // REAL BLE MODE (For custom dev client or standalone build)
-    // Note: Expo Go does NOT support native BLE
-    // To enable real BLE:
-    // 1. Build custom dev client: npx expo run:android
-    // 2. Or create standalone APK: eas build
-    // 3. Install react-native-ble-plx in custom build
-    
-    this.isScanning = false;
-    this.emit('scanComplete', { devices: [] });
-    console.log('⚠️ Real BLE not available in Expo Go. Use custom dev client for real hardware.');
-    return [];
+    if (!this.manager) {
+      this.isScanning = false;
+      this.emit('scanComplete', { devices: [] });
+      throw new Error(
+        'Bluetooth native tidak tersedia. Pakai APK preview (bukan Expo Go), atau gunakan Ukur Live (MQTT).'
+      );
+    }
+
+    // REAL BLE scan via react-native-ble-plx
+    const found = new Map<string, BLEDevice>();
+
+    return new Promise((resolve, reject) => {
+      const finish = () => {
+        this.isScanning = false;
+        try {
+          this.manager?.stopDeviceScan();
+        } catch {
+          // ignore
+        }
+        const list = Array.from(found.values());
+        this.emit('scanComplete', { devices: list });
+        console.log(`✅ BLE Scan complete: ${list.length} device(s)`);
+        resolve(list);
+      };
+
+      const timer = setTimeout(finish, durationSeconds * 1000);
+
+      try {
+        this.manager.startDeviceScan(
+          null,
+          { allowDuplicates: false },
+          (error: { message?: string } | null, device: {
+            id: string;
+            name?: string | null;
+            localName?: string | null;
+            rssi?: number | null;
+            serviceUUIDs?: string[] | null;
+          } | null) => {
+            if (error) {
+              clearTimeout(timer);
+              this.isScanning = false;
+              try {
+                this.manager?.stopDeviceScan();
+              } catch {
+                // ignore
+              }
+              reject(
+                new Error(
+                  error.message ||
+                    'Gagal scan Bluetooth. Pastikan Bluetooth HP aktif.'
+                )
+              );
+              return;
+            }
+            if (!device) return;
+
+            const name = (device.name || device.localName || '').trim();
+            const nameLower = name.toLowerCase();
+            const isBabyGrow =
+              nameLower === 'babygrow_alat' ||
+              nameLower.includes('babygrow') ||
+              (device.serviceUUIDs || []).some(
+                (u) => u?.toLowerCase() === SERVICE_UUID.toLowerCase()
+              );
+
+            if (!isBabyGrow) return;
+
+            found.set(device.id, {
+              id: device.id,
+              name: name || 'BabyGrow_Alat',
+              rssi: device.rssi ?? -100,
+              serviceUUIDs: device.serviceUUIDs || [SERVICE_UUID],
+            });
+            console.log('📡 Found:', name || device.id, 'rssi', device.rssi);
+          }
+        );
+      } catch (e) {
+        clearTimeout(timer);
+        this.isScanning = false;
+        reject(
+          e instanceof Error
+            ? e
+            : new Error('Tidak bisa memulai scan Bluetooth')
+        );
+      }
+    });
   }
 
   /**
